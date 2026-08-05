@@ -218,4 +218,4 @@ class GeoScoringEngine:
                 -action.frequency,
                 action.title,
             ),
-        )[:MAX_SUMMARY_ITEMS]
+        )

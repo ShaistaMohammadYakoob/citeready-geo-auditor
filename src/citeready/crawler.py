@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import heapq
 import itertools
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterator
@@ -46,7 +47,11 @@ class SiteCrawler:
             }
         )
 
-    def crawl(self, site_url: str) -> CrawlResult:
+    def crawl(
+        self,
+        site_url: str,
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> CrawlResult:
         """Return parsed pages and warnings for one normalized website URL.
 
         Individual request, redirect, HTTP-status, content-type, and parsing
@@ -68,6 +73,7 @@ class SiteCrawler:
         analyzed_url = normalized_start
 
         self._schedule(queue, sequence, scheduled_urls, normalized_start, normalized_start)
+        self._notify_progress(progress_callback, "crawl_started")
 
         while queue and len(pages) < self.settings.max_pages:
             _, _, candidate_url = heapq.heappop(queue)
@@ -150,6 +156,8 @@ class SiteCrawler:
                 )
             )
 
+        self._notify_progress(progress_callback, "crawl_completed")
+
         try:
             discoverability = DiscoverabilityEngine().analyze(
                 analyzed_url,
@@ -159,6 +167,7 @@ class SiteCrawler:
                     analyzed_url,
                     warnings,
                 ),
+                progress_callback=progress_callback,
             )
         except Exception as error:  # Keep a partial crawl usable if a later analyzer regresses.
             warnings.append(
@@ -172,6 +181,7 @@ class SiteCrawler:
 
         try:
             citation_readiness = CitationReadinessAnalyzer().analyze(pages)
+            self._notify_progress(progress_callback, "citation_readiness_completed")
         except Exception as error:  # Preserve a useful crawl if citation analysis encounters malformed data.
             warnings.append(
                 CrawlWarning(
@@ -184,6 +194,7 @@ class SiteCrawler:
 
         try:
             entity_trust = EntityTrustAnalyzer().analyze(analyzed_url, pages, warnings)
+            self._notify_progress(progress_callback, "entity_trust_completed")
         except Exception as error:  # Keep the crawl useful if entity/trust analysis encounters malformed data.
             warnings.append(
                 CrawlWarning(
@@ -196,6 +207,7 @@ class SiteCrawler:
 
         try:
             answerability = AnswerabilityAnalyzer().analyze(pages, entity_trust, analyzed_url)
+            self._notify_progress(progress_callback, "answerability_completed")
         except Exception as error:  # Preserve a usable crawl if answerability analysis encounters malformed data.
             warnings.append(
                 CrawlWarning(
@@ -220,7 +232,11 @@ class SiteCrawler:
             completed_at=datetime.now(timezone.utc),
         )
         try:
-            return crawl_result.model_copy(update={"scoring": GeoScoringEngine().score(crawl_result)})
+            scored_result = crawl_result.model_copy(
+                update={"scoring": GeoScoringEngine().score(crawl_result)}
+            )
+            self._notify_progress(progress_callback, "scoring_completed")
+            return scored_result
         except Exception as error:  # A scoring regression must never hide usable analysis output.
             warnings.append(
                 CrawlWarning(
@@ -230,6 +246,17 @@ class SiteCrawler:
                 )
             )
             return crawl_result.model_copy(update={"warnings": warnings})
+
+    @staticmethod
+    def _notify_progress(callback: Callable[[str], None] | None, event: str) -> None:
+        """Inform optional presentation layers about completed work safely."""
+
+        if callback is None:
+            return
+        try:
+            callback(event)
+        except Exception:
+            return
 
     def _schedule(
         self,

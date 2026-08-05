@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from ..models import CrawledPage, DiscoverabilityAnalysis
 from .base import TextResourceFetcher
 from .canonical import CanonicalAnalyzer
@@ -26,11 +28,14 @@ class DiscoverabilityEngine:
         site_url: str,
         pages: list[CrawledPage],
         fetch: TextResourceFetcher,
+        progress_callback: Callable[[str], None] | None = None,
     ) -> DiscoverabilityAnalysis:
         """Collect all findings; no score or prioritization is calculated here."""
 
         robots_result = self.robots_txt.analyze(site_url, fetch)
+        _notify_progress(progress_callback, "robots_txt_completed")
         sitemap_result = self.sitemap.analyze(site_url, fetch, robots_result.sitemap_urls)
+        _notify_progress(progress_callback, "sitemap_completed")
         canonical_result = self.canonical.analyze(pages, site_url)
         meta_robots_result = self.meta_robots.analyze(pages)
         llms_result = self.llms_txt.analyze(site_url, fetch)
@@ -49,3 +54,14 @@ class DiscoverabilityEngine:
             llms_txt=llms_result,
             findings=findings,
         )
+
+
+def _notify_progress(callback: Callable[[str], None] | None, event: str) -> None:
+    """Report completed work without letting presentation callbacks interrupt analysis."""
+
+    if callback is None:
+        return
+    try:
+        callback(event)
+    except Exception:
+        return

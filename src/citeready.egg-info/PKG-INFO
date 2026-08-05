@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: citeready
+Version: 0.1.0
+Summary: Evidence-based deterministic GEO visibility auditing
+Requires-Python: >=3.11
