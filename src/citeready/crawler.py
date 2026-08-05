@@ -10,7 +10,7 @@ from typing import Iterator
 
 import requests
 
-from .analyzers import CitationReadinessAnalyzer, DiscoverabilityEngine
+from .analyzers import CitationReadinessAnalyzer, DiscoverabilityEngine, EntityTrustAnalyzer
 from .config import CrawlerSettings
 from .models import CrawlResult, CrawlWarning, CrawledPage, ResourceFetch
 from .parser import parse_html_page
@@ -181,6 +181,18 @@ class SiteCrawler:
             )
             citation_readiness = None
 
+        try:
+            entity_trust = EntityTrustAnalyzer().analyze(analyzed_url, pages, warnings)
+        except Exception as error:  # Keep the crawl useful if entity/trust analysis encounters malformed data.
+            warnings.append(
+                CrawlWarning(
+                    code="entity_trust_analysis_failed",
+                    message=f"Entity and Trust analysis could not complete: {error}",
+                    url=analyzed_url,
+                )
+            )
+            entity_trust = None
+
         return CrawlResult(
             requested_url=normalized_start,
             analyzed_url=analyzed_url,
@@ -188,6 +200,7 @@ class SiteCrawler:
             warnings=warnings,
             discoverability=discoverability,
             citation_readiness=citation_readiness,
+            entity_trust=entity_trust,
             max_pages=self.settings.max_pages,
             started_at=started_at,
             completed_at=datetime.now(timezone.utc),

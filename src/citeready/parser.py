@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Comment
 
-from .models import ContentBlock, CrawledPage, FreshnessSignal, Heading
+from .models import ContentBlock, CrawledPage, ExternalLinkSignal, FreshnessSignal, Heading
 from .url_utils import is_ignored_link, is_same_domain, normalize_url
 
 
@@ -45,14 +46,21 @@ def parse_html_page(
 
     title = _text_or_none(soup.title)
     meta_description = _meta_description(soup)
+    open_graph = _open_graph(soup)
     headings = _extract_headings(soup)
     canonical_url = _canonical_url(soup, final_url)
     robots_meta = _robots_meta(soup)
     json_ld = _json_ld(soup, parse_warnings)
     internal_links, external_links = _extract_links(soup, final_url)
+    external_link_signals = _external_link_signals(soup, final_url)
     content_soup = _content_soup(soup)
     content_blocks = _extract_content_blocks(content_soup, final_url)
     text_content = _visible_text(content_soup)
+    footer_text = _footer_text(content_soup)
+    visible_addresses = _visible_addresses(content_soup)
+    image_alt_text = _image_alt_text(content_soup)
+    has_contact_form = _has_contact_form(content_soup, final_url)
+    author_links = _author_links(soup, final_url)
     freshness_signals = _extract_freshness_signals(soup, content_soup, json_ld)
 
     return CrawledPage(
@@ -63,14 +71,21 @@ def parse_html_page(
         content_type=content_type,
         title=title,
         meta_description=meta_description,
+        open_graph=open_graph,
         headings=headings,
         content_blocks=content_blocks,
         text_content=text_content,
+        footer_text=footer_text,
+        visible_addresses=visible_addresses,
+        image_alt_text=image_alt_text,
+        has_contact_form=has_contact_form,
+        author_links=author_links,
         canonical_url=canonical_url,
         robots_meta=robots_meta,
         json_ld=json_ld,
         internal_links=internal_links,
         external_links=external_links,
+        external_link_signals=external_link_signals,
         freshness_signals=freshness_signals,
         parse_warnings=parse_warnings,
         fetched_at=datetime.now(timezone.utc),
@@ -90,6 +105,18 @@ def _meta_description(soup: BeautifulSoup) -> str | None:
         return None
     content = meta.get("content")
     return _clean_text(content) if content else None
+
+
+def _open_graph(soup: BeautifulSoup) -> dict[str, str]:
+    """Return published Open Graph metadata without inferring missing values."""
+
+    values: dict[str, str] = {}
+    for meta in soup.find_all("meta"):
+        property_name = str(meta.get("property") or "").strip().lower()
+        content = str(meta.get("content") or "").strip()
+        if property_name.startswith("og:") and content and property_name not in values:
+            values[property_name] = _clean_text(content)
+    return values
 
 
 def _extract_headings(soup: BeautifulSoup) -> list[Heading]:
@@ -156,6 +183,65 @@ def _extract_links(soup: BeautifulSoup, page_url: str) -> tuple[list[str], list[
     return sorted(internal_links), sorted(external_links)
 
 
+def _external_link_signals(soup: BeautifulSoup, page_url: str) -> list[ExternalLinkSignal]:
+    """Keep published link context for conservative entity-profile checks."""
+
+    signals: list[ExternalLinkSignal] = []
+    seen: set[tuple[str, str, tuple[str, ...], str | None, str | None, bool]] = set()
+    for anchor in soup.find_all("a", href=True):
+        href = str(anchor["href"])
+        if is_ignored_link(href, page_url):
+            continue
+        url = normalize_url(href, base_url=page_url)
+        if not url or is_same_domain(url, page_url):
+            continue
+        relation = anchor.get("rel", [])
+        rel_values = relation.split() if isinstance(relation, str) else relation
+        normalized_rel = sorted({str(value).lower() for value in rel_values if str(value).strip()})
+        aria_label = _clean_text(str(anchor.get("aria-label") or "")) or None
+        anchor_text = _clean_text(anchor.get_text(" ", strip=True))
+        location, in_social_area = _link_location(anchor)
+        key = (url, anchor_text, tuple(normalized_rel), aria_label, location, in_social_area)
+        if key in seen:
+            continue
+        seen.add(key)
+        signals.append(
+            ExternalLinkSignal(
+                url=url,
+                anchor_text=anchor_text,
+                rel_values=normalized_rel,
+                aria_label=aria_label,
+                location=location,
+                in_social_area=in_social_area,
+            )
+        )
+    return signals
+
+
+def _link_location(anchor: Any) -> tuple[str | None, bool]:
+    """Identify header/footer social-link regions without inferring link ownership."""
+
+    ancestors = [anchor, *anchor.parents]
+    location: str | None = None
+    in_social_area = False
+    for element in ancestors:
+        if not getattr(element, "name", None):
+            continue
+        name = str(element.name).lower()
+        if name in {"header", "footer"} and location is None:
+            location = name
+        attributes = " ".join(
+            [
+                str(element.get("id") or ""),
+                " ".join(str(value) for value in element.get("class", [])),
+                str(element.get("aria-label") or ""),
+            ]
+        ).lower()
+        if "social" in attributes:
+            in_social_area = True
+    return location, in_social_area
+
+
 def _content_soup(soup: BeautifulSoup) -> BeautifulSoup:
     """Return a copy with non-visible and non-content elements removed."""
 
@@ -192,6 +278,70 @@ def _extract_content_blocks(soup: BeautifulSoup, page_url: str) -> list[ContentB
             )
         )
     return blocks
+
+
+def _footer_text(soup: BeautifulSoup) -> str:
+    """Extract footer wording used for explicit copyright/entity checks."""
+
+    return _clean_text(" ".join(footer.get_text(" ", strip=True) for footer in soup.find_all("footer")))
+
+
+def _visible_addresses(soup: BeautifulSoup) -> list[str]:
+    """Collect only explicitly marked-up visible postal addresses."""
+
+    return _deduplicated_text(address.get_text(" ", strip=True) for address in soup.find_all("address"))
+
+
+def _image_alt_text(soup: BeautifulSoup) -> list[str]:
+    """Retain published image alt labels for conservative logo-signal detection."""
+
+    return _deduplicated_text(str(image.get("alt") or "") for image in soup.find_all("img"))
+
+
+def _has_contact_form(soup: BeautifulSoup, page_url: str) -> bool:
+    """Detect a likely public contact form without treating every form as one."""
+
+    for form in soup.find_all("form"):
+        form_context = " ".join(
+            [
+                str(form.get("id") or ""),
+                " ".join(str(value) for value in form.get("class", [])),
+                str(form.get("action") or ""),
+                form.get_text(" ", strip=True),
+            ]
+        ).lower()
+        input_context = " ".join(
+            str(element.get("name") or element.get("type") or "")
+            for element in form.find_all(["input", "textarea", "select"])
+        ).lower()
+        if "contact" in form_context or "support" in form_context:
+            return True
+        if "contact" in page_url.lower() and ("email" in input_context or "message" in input_context):
+            return True
+    return False
+
+
+def _author_links(soup: BeautifulSoup, page_url: str) -> list[str]:
+    """Collect explicit author-profile links for editorial attribution checks."""
+
+    links: list[str] = []
+    for anchor in soup.find_all("a", href=True):
+        relation = anchor.get("rel", [])
+        rel_values = relation.split() if isinstance(relation, str) else relation
+        attributes = " ".join(
+            [
+                " ".join(str(value) for value in rel_values),
+                str(anchor.get("class") or ""),
+                str(anchor.get("id") or ""),
+                str(anchor.get("href") or ""),
+            ]
+        ).lower()
+        if "author" not in attributes:
+            continue
+        normalized = normalize_url(str(anchor["href"]), base_url=page_url)
+        if normalized:
+            links.append(normalized)
+    return sorted(set(links))
 
 
 def _element_links(element: Any, page_url: str) -> list[str]:
@@ -281,3 +431,14 @@ def _visible_text(content_soup: BeautifulSoup) -> str:
 
 def _clean_text(value: str) -> str:
     return WHITESPACE_PATTERN.sub(" ", value).strip()
+
+
+def _deduplicated_text(values: Iterable[str]) -> list[str]:
+    """Normalize a short iterable of extracted text while preserving its order."""
+
+    result: list[str] = []
+    for value in values:
+        text = _clean_text(str(value))
+        if text and text not in result:
+            result.append(text)
+    return result

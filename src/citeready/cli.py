@@ -24,6 +24,14 @@ CROSS_MARK = "\u2717"
 WARNING_MARK = "\u26a0"
 MAX_EVIDENCE_CHARACTERS = 250
 MAX_DISPLAYED_EXAMPLES = 5
+ENTITY_FINDING_GROUPS = (
+    "Entity identity",
+    "Structured data",
+    "Contact and organization pages",
+    "Author signals",
+    "Trust signals",
+    "Social/knowledge graph signals",
+)
 
 
 def main() -> int:
@@ -45,6 +53,11 @@ def main() -> int:
         action="store_true",
         help="Print detailed, evidence-backed Citation Readiness findings after the summary.",
     )
+    parser.add_argument(
+        "--show-entity-findings",
+        action="store_true",
+        help="Print detailed, evidence-backed Entity and Trust findings after the summary.",
+    )
     arguments = parser.parse_args()
 
     try:
@@ -63,6 +76,8 @@ def main() -> int:
         _print_findings(result)
     if arguments.show_citation_findings:
         _print_citation_findings(result)
+    if arguments.show_entity_findings:
+        _print_entity_findings(result)
     if result.warnings:
         print("\nWarnings")
         for warning in result.warnings:
@@ -133,7 +148,7 @@ def _print_discoverability_report(result: CrawlResult) -> None:
 
 
 def _print_findings(result: CrawlResult) -> None:
-    """Print the shared finding contract in a business-readable CLI form."""
+    """Print the shared finding contract in a terminal-readable CLI form."""
 
     discoverability = result.discoverability
     if discoverability is None:
@@ -160,6 +175,30 @@ def _print_citation_findings(result: CrawlResult) -> None:
         return
 
     _print_finding_details(citation_readiness.findings)
+
+
+def _print_entity_findings(result: CrawlResult) -> None:
+    """Print detailed Entity and Trust findings in their user-facing analysis groups."""
+
+    entity_trust = result.entity_trust
+    if entity_trust is None:
+        return
+
+    print("\nEntity and Trust findings")
+    if not entity_trust.findings:
+        print("No actionable Entity and Trust findings were detected.")
+        return
+
+    grouped_findings: dict[str, list[DiscoverabilityFinding]] = {}
+    for finding in entity_trust.findings:
+        grouped_findings.setdefault(_entity_finding_group(finding), []).append(finding)
+    for group in ENTITY_FINDING_GROUPS:
+        findings = grouped_findings.get(group)
+        if not findings:
+            continue
+        print(f"\n{group}")
+        print("=" * len(group))
+        _print_finding_details(findings)
 
 
 def _print_finding_details(findings: list[DiscoverabilityFinding]) -> None:
@@ -189,6 +228,10 @@ def _print_one_finding(finding: DiscoverabilityFinding) -> None:
         _print_evidence(finding.evidence, max_examples=MAX_DISPLAYED_EXAMPLES)
     elif finding.title == "Question headings do not have visible answers":
         _print_evidence(finding.evidence, max_examples=MAX_DISPLAYED_EXAMPLES)
+    elif finding.title == "Potential official profiles are missing from organization sameAs":
+        _print_evidence(finding.evidence, max_examples=MAX_DISPLAYED_EXAMPLES)
+    elif finding.title.startswith("Multiple potential ") and finding.title.endswith(" profiles detected"):
+        _print_profile_candidates(finding.evidence)
     else:
         _print_evidence(finding.evidence)
 
@@ -258,6 +301,38 @@ def _truncate_evidence(text: str) -> str:
     additional_characters = len(text) - MAX_EVIDENCE_CHARACTERS
     excerpt = text[:MAX_EVIDENCE_CHARACTERS].rstrip()
     return f"{excerpt}...\n  (+{additional_characters} additional characters retained)"
+
+
+def _print_profile_candidates(evidence_items: list[Evidence]) -> None:
+    """Render distinct same-platform candidates as a compact verification list."""
+
+    print("Potential profiles:")
+    for evidence in evidence_items[:MAX_DISPLAYED_EXAMPLES]:
+        print(f"- {_truncate_evidence(evidence.exact_text)}")
+        if evidence.context:
+            print(f"  Context: {evidence.context}")
+    omitted_count = len(evidence_items) - min(len(evidence_items), MAX_DISPLAYED_EXAMPLES)
+    if omitted_count:
+        print(f"(+{omitted_count} additional matches)")
+
+
+def _entity_finding_group(finding: DiscoverabilityFinding) -> str:
+    """Map the finite Phase 4 finding set to readable CLI sections."""
+
+    title = finding.title
+    if title == "Entity Consistency Risk":
+        return "Entity identity"
+    if "structured data" in title.lower() or "JSON-LD" in title:
+        return "Structured data"
+    if any(term in title for term in ("About", "Contact", "organization contact")):
+        return "Contact and organization pages"
+    if "Editorial" in title or "editorial" in title:
+        return "Author signals"
+    if "policy" in title.lower():
+        return "Trust signals"
+    if "profile" in title.lower() or "sameAs" in title:
+        return "Social/knowledge graph signals"
+    return "Trust signals"
 
 
 if __name__ == "__main__":

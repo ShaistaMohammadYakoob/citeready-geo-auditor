@@ -84,6 +84,17 @@ class FreshnessSignal(Model):
     evidence: str
 
 
+class ExternalLinkSignal(Model):
+    """Visible link context used for conservative social-profile classification."""
+
+    url: str
+    anchor_text: str = ""
+    rel_values: list[str] = Field(default_factory=list)
+    aria_label: str | None = None
+    location: str | None = None
+    in_social_area: bool = False
+
+
 class CrawledPage(Model):
     """Server-rendered content and metadata extracted from one HTML page."""
 
@@ -94,14 +105,21 @@ class CrawledPage(Model):
     content_type: str | None = None
     title: str | None = None
     meta_description: str | None = None
+    open_graph: dict[str, str] = Field(default_factory=dict)
     headings: list[Heading] = Field(default_factory=list)
     content_blocks: list[ContentBlock] = Field(default_factory=list)
     text_content: str = ""
+    footer_text: str = ""
+    visible_addresses: list[str] = Field(default_factory=list)
+    image_alt_text: list[str] = Field(default_factory=list)
+    has_contact_form: bool = False
+    author_links: list[str] = Field(default_factory=list)
     canonical_url: str | None = None
     robots_meta: dict[str, str] = Field(default_factory=dict)
     json_ld: list[Any] = Field(default_factory=list)
     internal_links: list[str] = Field(default_factory=list)
     external_links: list[str] = Field(default_factory=list)
+    external_link_signals: list[ExternalLinkSignal] = Field(default_factory=list)
     freshness_signals: list[FreshnessSignal] = Field(default_factory=list)
     parse_warnings: list[str] = Field(default_factory=list)
     fetched_at: datetime
@@ -331,6 +349,119 @@ class CitationReadinessAnalysis(Model):
     findings: list[DiscoverabilityFinding] = Field(default_factory=list)
 
 
+class OrganizationStructuredData(Model):
+    """One typed JSON-LD entity extracted exactly as published by a page."""
+
+    page_url: str
+    entity_type: str
+    schema_types: list[str] = Field(default_factory=list)
+    source_property: str | None = None
+    name: str | None = None
+    legal_name: str | None = None
+    url: str | None = None
+    logo: str | None = None
+    description: str | None = None
+    email: str | None = None
+    telephone: str | None = None
+    address: str | None = None
+    location: str | None = None
+    same_as: list[str] = Field(default_factory=list)
+    founder: str | None = None
+    founding_date: str | None = None
+
+
+class EntityIdentitySignal(Model):
+    """One bounded, page-level value that may identify the business."""
+
+    page_url: str
+    entity_type: str
+    source_type: str
+    value: str
+
+
+class CompanyPageSignal(Model):
+    """Availability and visible-content signal for a company or support page."""
+
+    page_type: str
+    url: str
+    internally_linked: bool
+    available: bool | None = None
+    visible_word_count: int = Field(default=0, ge=0)
+    has_meaningful_text: bool = False
+
+
+class BusinessContactDetail(Model):
+    """Public business contact detail retained for deterministic comparison."""
+
+    detail_type: str
+    value: str
+    page_url: str
+    source_type: str
+
+
+class AuthorEditorialSignal(Model):
+    """Attribution signals detected on one likely editorial page."""
+
+    page_url: str
+    is_editorial: bool
+    visible_word_count: int = Field(default=0, ge=0)
+    author_names: list[str] = Field(default_factory=list)
+    author_links: list[str] = Field(default_factory=list)
+    has_author_bio: bool = False
+    roles_or_credentials: list[str] = Field(default_factory=list)
+    publication_dates: list[str] = Field(default_factory=list)
+    has_article_schema: bool = False
+    has_person_schema: bool = False
+
+
+class ExternalCredibilitySignal(Model):
+    """Visible support context detected without verifying its truthfulness."""
+
+    page_url: str
+    outbound_citation_urls: list[str] = Field(default_factory=list)
+    named_source_labels: list[str] = Field(default_factory=list)
+    certifications_or_awards: list[str] = Field(default_factory=list)
+    customer_logo_signals: list[str] = Field(default_factory=list)
+    testimonial_signals: list[str] = Field(default_factory=list)
+    case_study_signals: list[str] = Field(default_factory=list)
+
+
+class TrustPolicySignal(Model):
+    """One detected trust or policy page, linked or directly crawled."""
+
+    policy_type: str
+    url: str
+    internally_linked: bool
+    available: bool | None = None
+
+
+class SocialProfileSignal(Model):
+    """A known social or knowledge-graph profile published by the site."""
+
+    network: str
+    url: str
+    page_url: str
+    source_type: str
+    relevance_signals: list[str] = Field(default_factory=list)
+
+
+class EntityTrustAnalysis(Model):
+    """Aggregate output from the deterministic Entity and Trust analyzer."""
+
+    organization_data: list[OrganizationStructuredData] = Field(default_factory=list)
+    person_entities: list[OrganizationStructuredData] = Field(default_factory=list)
+    website_entities: list[OrganizationStructuredData] = Field(default_factory=list)
+    article_entities: list[OrganizationStructuredData] = Field(default_factory=list)
+    identity_signals: list[EntityIdentitySignal] = Field(default_factory=list)
+    company_pages: list[CompanyPageSignal] = Field(default_factory=list)
+    contact_details: list[BusinessContactDetail] = Field(default_factory=list)
+    editorial_signals: list[AuthorEditorialSignal] = Field(default_factory=list)
+    credibility_signals: list[ExternalCredibilitySignal] = Field(default_factory=list)
+    trust_policy_pages: list[TrustPolicySignal] = Field(default_factory=list)
+    social_profiles: list[SocialProfileSignal] = Field(default_factory=list)
+    findings: list[DiscoverabilityFinding] = Field(default_factory=list)
+
+
 class CrawlResult(Model):
     """The complete output of a bounded crawl."""
 
@@ -340,6 +471,7 @@ class CrawlResult(Model):
     warnings: list[CrawlWarning] = Field(default_factory=list)
     discoverability: DiscoverabilityAnalysis | None = None
     citation_readiness: CitationReadinessAnalysis | None = None
+    entity_trust: EntityTrustAnalysis | None = None
     max_pages: int = Field(ge=1, le=12)
     started_at: datetime
     completed_at: datetime
