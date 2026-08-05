@@ -79,18 +79,6 @@ class CrawledPage(Model):
     fetched_at: datetime
 
 
-class CrawlResult(Model):
-    """The complete output of a bounded crawl."""
-
-    requested_url: str
-    analyzed_url: str
-    pages: list[CrawledPage] = Field(default_factory=list)
-    warnings: list[CrawlWarning] = Field(default_factory=list)
-    max_pages: int = Field(ge=1, le=12)
-    started_at: datetime
-    completed_at: datetime
-
-
 class Evidence(Model):
     """Exact source material supporting a later audit conclusion."""
 
@@ -98,6 +86,176 @@ class Evidence(Model):
     exact_text: str
     source_type: str
     context: str | None = None
+
+
+class DiscoverabilityFinding(Model):
+    """An evidence-backed discoverability issue with no score attached."""
+
+    title: str
+    severity: Severity
+    evidence: list[Evidence] = Field(default_factory=list)
+    affected_url: str
+    why_it_matters: str
+    recommended_fix: str
+    copy_paste_fix: str | None = None
+
+
+class ResourceFetch(Model):
+    """A bounded text resource retrieved for discoverability analysis."""
+
+    requested_url: str
+    final_url: str | None = None
+    status_code: int | None = Field(default=None, ge=100, le=599)
+    content_type: str | None = None
+    text: str | None = None
+    redirect_chain: list[str] = Field(default_factory=list)
+    error: str | None = None
+
+
+class BotAccess(str, Enum):
+    """Effective access for one crawler user agent under robots.txt."""
+
+    ALLOWED = "Allowed"
+    BLOCKED = "Blocked"
+    UNKNOWN = "Unknown"
+
+
+class BotAccessResult(Model):
+    """The applicable robots directives and effective root-path access for a bot."""
+
+    bot_name: str
+    access: BotAccess
+    is_explicit_rule: bool = False
+    directives: list[str] = Field(default_factory=list)
+    evidence: list[Evidence] = Field(default_factory=list)
+
+
+class RobotsTxtAnalysis(Model):
+    """Structured results from a robots.txt inspection."""
+
+    url: str
+    found: bool
+    status_code: int | None = None
+    bot_access: list[BotAccessResult] = Field(default_factory=list)
+    sitemap_urls: list[str] = Field(default_factory=list)
+    findings: list[DiscoverabilityFinding] = Field(default_factory=list)
+
+
+class SitemapDocument(Model):
+    """One sitemap document inspected by the sitemap analyzer."""
+
+    url: str
+    status_code: int | None = None
+    is_index: bool = False
+    url_count: int = Field(default=0, ge=0)
+    parsed: bool = False
+    error: str | None = None
+
+
+class SitemapAnalysisStatus(str, Enum):
+    """Whether sitemap URL coverage is complete, partial, unavailable, or invalid."""
+
+    COMPLETE = "complete"
+    PARTIAL = "partial"
+    UNAVAILABLE = "unavailable"
+    INVALID = "invalid"
+
+
+class SkippedSitemapFile(Model):
+    """A sitemap that was discovered but intentionally not parsed."""
+
+    url: str
+    reason: str
+    status_code: int | None = Field(default=None, ge=100, le=599)
+
+
+class SitemapAnalysis(Model):
+    """Structured sitemap coverage result with explicit completeness metadata."""
+
+    status: SitemapAnalysisStatus
+    found: bool
+    discovered_sitemap_files: list[str] = Field(default_factory=list)
+    successfully_parsed_sitemap_files: list[str] = Field(default_factory=list)
+    skipped_sitemap_files: list[SkippedSitemapFile] = Field(default_factory=list)
+    parsed_url_count: int = Field(default=0, ge=0)
+    url_count_is_complete: bool
+    documents: list[SitemapDocument] = Field(default_factory=list)
+    findings: list[DiscoverabilityFinding] = Field(default_factory=list)
+
+
+class CanonicalState(str, Enum):
+    """Canonical relationship for an audited page."""
+
+    SELF = "self"
+    INTERNAL_OTHER = "internal_other"
+    EXTERNAL = "external"
+    MISSING = "missing"
+
+
+class CanonicalPageResult(Model):
+    """Canonical result for one crawled page."""
+
+    page_url: str
+    canonical_url: str | None = None
+    state: CanonicalState
+
+
+class CanonicalAnalysis(Model):
+    """Canonical-tag results across all crawled HTML pages."""
+
+    pages: list[CanonicalPageResult] = Field(default_factory=list)
+    missing_page_urls: list[str] = Field(default_factory=list)
+    external_canonical_page_urls: list[str] = Field(default_factory=list)
+    findings: list[DiscoverabilityFinding] = Field(default_factory=list)
+
+
+class NoindexPage(Model):
+    """A page carrying one or more noindex-equivalent meta directives."""
+
+    page_url: str
+    directives: dict[str, str]
+
+
+class MetaRobotsAnalysis(Model):
+    """Meta robots directives found in the crawled page set."""
+
+    checked_page_count: int = Field(ge=0)
+    noindex_pages: list[NoindexPage] = Field(default_factory=list)
+    findings: list[DiscoverabilityFinding] = Field(default_factory=list)
+
+
+class LlmsTxtAnalysis(Model):
+    """Availability result for the optional llms.txt convention."""
+
+    url: str
+    found: bool
+    status_code: int | None = None
+    line_count: int = Field(default=0, ge=0)
+    findings: list[DiscoverabilityFinding] = Field(default_factory=list)
+
+
+class DiscoverabilityAnalysis(Model):
+    """The unscored aggregate of all Phase 2 discoverability analyzers."""
+
+    robots_txt: RobotsTxtAnalysis
+    sitemap: SitemapAnalysis
+    canonical: CanonicalAnalysis
+    meta_robots: MetaRobotsAnalysis
+    llms_txt: LlmsTxtAnalysis
+    findings: list[DiscoverabilityFinding] = Field(default_factory=list)
+
+
+class CrawlResult(Model):
+    """The complete output of a bounded crawl."""
+
+    requested_url: str
+    analyzed_url: str
+    pages: list[CrawledPage] = Field(default_factory=list)
+    warnings: list[CrawlWarning] = Field(default_factory=list)
+    discoverability: DiscoverabilityAnalysis | None = None
+    max_pages: int = Field(ge=1, le=12)
+    started_at: datetime
+    completed_at: datetime
 
 
 class RuleResult(Model):

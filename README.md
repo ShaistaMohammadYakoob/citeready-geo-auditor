@@ -4,7 +4,9 @@ Phase 1 provides the safe website-crawling foundation for the auditor. It can
 normalize a public URL, crawl up to 12 useful same-domain HTML pages, and
 extract the content and metadata required by later audit phases.
 
-No scoring or Streamlit interface is included yet.
+Phase 2 adds an unscored discoverability engine for robots.txt, sitemap.xml,
+canonical tags, meta-robots directives, and llms.txt. No scoring or Streamlit
+interface is included yet.
 
 ## Smoke test
 

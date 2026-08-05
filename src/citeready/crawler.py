@@ -10,8 +10,9 @@ from typing import Iterator
 
 import requests
 
+from .analyzers import DiscoverabilityEngine
 from .config import CrawlerSettings
-from .models import CrawlResult, CrawlWarning, CrawledPage
+from .models import CrawlResult, CrawlWarning, CrawledPage, ResourceFetch
 from .parser import parse_html_page
 from .url_utils import is_same_domain, link_priority, normalize_url
 
@@ -148,11 +149,32 @@ class SiteCrawler:
                 )
             )
 
+        try:
+            discoverability = DiscoverabilityEngine().analyze(
+                analyzed_url,
+                pages,
+                lambda resource_url: self._fetch_text_resource(
+                    resource_url,
+                    analyzed_url,
+                    warnings,
+                ),
+            )
+        except Exception as error:  # Keep a partial crawl usable if a later analyzer regresses.
+            warnings.append(
+                CrawlWarning(
+                    code="discoverability_analysis_failed",
+                    message=f"Discoverability analysis could not complete: {error}",
+                    url=analyzed_url,
+                )
+            )
+            discoverability = None
+
         return CrawlResult(
             requested_url=normalized_start,
             analyzed_url=analyzed_url,
             pages=pages,
             warnings=warnings,
+            discoverability=discoverability,
             max_pages=self.settings.max_pages,
             started_at=started_at,
             completed_at=datetime.now(timezone.utc),
@@ -270,6 +292,135 @@ class SiteCrawler:
             warnings.append(CrawlWarning(code="response_read_failed", message=str(error), url=final_url))
             return None
         return b"".join(chunks)
+
+    def _fetch_text_resource(
+        self,
+        url: str,
+        site_url: str,
+        warnings: list[CrawlWarning],
+    ) -> ResourceFetch:
+        """Fetch a small same-domain text resource for a discoverability analyzer."""
+
+        normalized_url = normalize_url(url)
+        if not normalized_url or not is_same_domain(normalized_url, site_url):
+            message = "The requested resource is outside the audited domain and was not fetched."
+            warnings.append(CrawlWarning(code="resource_external_skipped", message=message, url=url))
+            return ResourceFetch(requested_url=url, error=message)
+        url = normalized_url
+
+        try:
+            response = self.session.get(
+                url,
+                timeout=(5, self.settings.timeout_seconds),
+                allow_redirects=True,
+                stream=True,
+            )
+        except requests.RequestException as error:
+            warnings.append(CrawlWarning(code="resource_request_failed", message=str(error), url=url))
+            return ResourceFetch(requested_url=url, error=str(error))
+
+        try:
+            final_url = normalize_url(response.url)
+            redirect_chain = [item.url for item in response.history]
+            content_type = response.headers.get("Content-Type")
+            if not final_url:
+                message = "The resource redirected to an invalid URL."
+                warnings.append(CrawlWarning(code="resource_redirect_invalid", message=message, url=url))
+                return ResourceFetch(
+                    requested_url=url,
+                    status_code=response.status_code,
+                    content_type=content_type,
+                    redirect_chain=redirect_chain,
+                    error=message,
+                )
+            if not is_same_domain(final_url, site_url):
+                message = "The resource redirected outside the audited domain."
+                warnings.append(
+                    CrawlWarning(code="resource_redirect_external", message=message, url=final_url)
+                )
+                return ResourceFetch(
+                    requested_url=url,
+                    final_url=final_url,
+                    status_code=response.status_code,
+                    content_type=content_type,
+                    redirect_chain=redirect_chain,
+                    error=message,
+                )
+            if not 200 <= response.status_code < 300:
+                return ResourceFetch(
+                    requested_url=url,
+                    final_url=final_url,
+                    status_code=response.status_code,
+                    content_type=content_type,
+                    redirect_chain=redirect_chain,
+                )
+
+            declared_length = _content_length(response.headers.get("Content-Length"))
+            if declared_length is not None and declared_length > self.settings.max_response_bytes:
+                message = (
+                    f"Response exceeds the {self.settings.max_response_bytes:,}-byte safety limit."
+                )
+                warnings.append(CrawlWarning(code="resource_too_large", message=message, url=final_url))
+                return ResourceFetch(
+                    requested_url=url,
+                    final_url=final_url,
+                    status_code=response.status_code,
+                    content_type=content_type,
+                    redirect_chain=redirect_chain,
+                    error=message,
+                )
+
+            body, read_error = self._read_text_resource_body(response)
+            if body is None:
+                message = read_error or "Response could not be read."
+                warning_code = (
+                    "resource_too_large" if "safety limit" in message else "resource_read_failed"
+                )
+                warnings.append(CrawlWarning(code=warning_code, message=message, url=final_url))
+                return ResourceFetch(
+                    requested_url=url,
+                    final_url=final_url,
+                    status_code=response.status_code,
+                    content_type=content_type,
+                    redirect_chain=redirect_chain,
+                    error=message,
+                )
+            return ResourceFetch(
+                requested_url=url,
+                final_url=final_url,
+                status_code=response.status_code,
+                content_type=content_type,
+                text=self._decode_body(body, content_type),
+                redirect_chain=redirect_chain,
+            )
+        except requests.RequestException as error:
+            warnings.append(CrawlWarning(code="resource_read_failed", message=str(error), url=url))
+            return ResourceFetch(requested_url=url, error=str(error))
+        finally:
+            response.close()
+
+    def _read_text_resource_body(self, response: requests.Response) -> tuple[bytes | None, str | None]:
+        """Read a well-known text resource without relaxing the response-size limit."""
+
+        chunks: list[bytes] = []
+        bytes_read = 0
+        try:
+            for chunk in response.iter_content(chunk_size=16_384):
+                if not chunk:
+                    continue
+                bytes_read += len(chunk)
+                if bytes_read > self.settings.max_response_bytes:
+                    return (
+                        None,
+                        (
+                            f"Response exceeded the {self.settings.max_response_bytes:,}-byte safety "
+                            "limit while downloading."
+                        ),
+                    )
+                chunks.append(chunk)
+        except requests.RequestException as error:
+            return None, str(error)
+        return b"".join(chunks), None
 
     @staticmethod
     def _decode_body(body: bytes, content_type: str | None) -> str:
