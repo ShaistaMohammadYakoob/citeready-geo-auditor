@@ -44,6 +44,16 @@ class AnswerStatus(str, Enum):
     PARTIALLY_ANSWERED = "Partially answered"
     NOT_ANSWERED = "Not answered"
     CONFLICTING_ANSWER = "Conflicting answer"
+    NOT_APPLICABLE = "Not applicable"
+
+
+class RuleScoreStatus(str, Enum):
+    """A transparent outcome for one configurable GEO scoring rule."""
+
+    PASS = "Pass"
+    PARTIAL = "Partial"
+    FAIL = "Fail"
+    NOT_APPLICABLE = "Not applicable"
 
 
 class Model(BaseModel):
@@ -95,6 +105,16 @@ class ExternalLinkSignal(Model):
     in_social_area: bool = False
 
 
+class CallToActionSignal(Model):
+    """Visible CTA context retained for answerability ranking without visual inference."""
+
+    label: str
+    target_url: str | None = None
+    element_type: str
+    location: str | None = None
+    near_primary_heading: bool = False
+
+
 class CrawledPage(Model):
     """Server-rendered content and metadata extracted from one HTML page."""
 
@@ -114,6 +134,8 @@ class CrawledPage(Model):
     image_alt_text: list[str] = Field(default_factory=list)
     has_contact_form: bool = False
     author_links: list[str] = Field(default_factory=list)
+    call_to_action_labels: list[str] = Field(default_factory=list)
+    call_to_action_signals: list[CallToActionSignal] = Field(default_factory=list)
     canonical_url: str | None = None
     robots_meta: dict[str, str] = Field(default_factory=dict)
     json_ld: list[Any] = Field(default_factory=list)
@@ -349,6 +371,70 @@ class CitationReadinessAnalysis(Model):
     findings: list[DiscoverabilityFinding] = Field(default_factory=list)
 
 
+class AnswerabilityQuestion(Model):
+    """One fixed, user-centred question evaluated by the Phase 5 analyzer."""
+
+    id: str
+    label: str
+
+
+class PrimaryEntityContext(Model):
+    """The primary publisher or organization to which Phase 5 answers must relate."""
+
+    entity_name: str | None = None
+    aliases: list[str] = Field(default_factory=list)
+    entity_type: str | None = None
+    homepage_url: str | None = None
+    confidence: Confidence = Confidence.LOW
+
+
+class AnswerEvidence(Model):
+    """An exact crawled excerpt supporting an answerability classification."""
+
+    page_url: str
+    excerpt: str
+    source_type: str
+    context: str | None = None
+    answer_reason: str | None = None
+    entity_relevance_reason: str | None = None
+    relevance_score: int | None = None
+
+
+class AnswerabilityResult(Model):
+    """Evidence-backed classification for one important visitor question."""
+
+    question: AnswerabilityQuestion
+    status: AnswerStatus
+    confidence: Confidence
+    answer_excerpt: str | None = None
+    supporting_urls: list[str] = Field(default_factory=list)
+    evidence: list[AnswerEvidence] = Field(default_factory=list)
+    conflicting_excerpt: str | None = None
+    explanation: str
+    recommendation: str
+    impact: int = Field(ge=1, le=5)
+    effort: int = Field(ge=1, le=5)
+
+
+class AnswerabilitySummary(Model):
+    """Counts of Phase 5 question classifications; this is not a score."""
+
+    clearly_answered: int = Field(default=0, ge=0)
+    partially_answered: int = Field(default=0, ge=0)
+    not_answered: int = Field(default=0, ge=0)
+    conflicting_answer: int = Field(default=0, ge=0)
+    not_applicable: int = Field(default=0, ge=0)
+
+
+class AnswerabilityAnalysis(Model):
+    """Aggregate output from deterministic AI Answerability analysis."""
+
+    primary_entity: PrimaryEntityContext
+    results: list[AnswerabilityResult] = Field(default_factory=list)
+    summary: AnswerabilitySummary
+    findings: list[DiscoverabilityFinding] = Field(default_factory=list)
+
+
 class OrganizationStructuredData(Model):
     """One typed JSON-LD entity extracted exactly as published by a page."""
 
@@ -472,6 +558,8 @@ class CrawlResult(Model):
     discoverability: DiscoverabilityAnalysis | None = None
     citation_readiness: CitationReadinessAnalysis | None = None
     entity_trust: EntityTrustAnalysis | None = None
+    answerability: AnswerabilityAnalysis | None = None
+    scoring: OverallScore | None = None
     max_pages: int = Field(ge=1, le=12)
     started_at: datetime
     completed_at: datetime
@@ -504,13 +592,49 @@ class AuditFinding(Model):
     priority_score: int = Field(ge=0, le=100)
 
 
+class RuleScore(Model):
+    """The explainable point outcome of one scoring rule."""
+
+    rule_id: str
+    title: str
+    max_points: float = Field(ge=0)
+    earned_points: float = Field(ge=0)
+    status: RuleScoreStatus
+    reason: str
+    linked_finding_ids: list[str] = Field(default_factory=list)
+
+
 class CategoryScore(Model):
-    """A category total with its supporting rule-level results."""
+    """A category total with a complete, user-readable rule breakdown."""
 
     category: AuditCategory
     maximum_points: float = Field(ge=0)
     earned_points: float = Field(ge=0)
-    rules: list[RuleResult] = Field(default_factory=list)
+    percentage: float = Field(ge=0, le=100)
+    rule_breakdown: list[RuleScore] = Field(default_factory=list)
+
+
+class PriorityAction(Model):
+    """One evidence-linked remediation action selected from scored weaknesses."""
+
+    title: str
+    recommendation: str
+    linked_finding_ids: list[str] = Field(default_factory=list)
+    affected_urls: list[str] = Field(default_factory=list)
+    frequency: int = Field(default=0, ge=0)
+    impact: int | None = Field(default=None, ge=1, le=5)
+    effort: int | None = Field(default=None, ge=1, le=5)
+
+
+class OverallScore(Model):
+    """The complete transparent GEO score; no opaque score is retained."""
+
+    overall_points: float = Field(ge=0)
+    overall_percentage: float = Field(ge=0, le=100)
+    category_scores: list[CategoryScore] = Field(default_factory=list)
+    top_strengths: list[str] = Field(default_factory=list)
+    top_weaknesses: list[str] = Field(default_factory=list)
+    highest_priority_actions: list[PriorityAction] = Field(default_factory=list)
 
 
 class PrioritizedRecommendation(Model):
@@ -522,16 +646,6 @@ class PrioritizedRecommendation(Model):
     estimated_effort: int = Field(ge=1, le=5)
     priority_score: int = Field(ge=0, le=100)
     expected_outcome: str
-
-
-class AnswerabilityResult(Model):
-    """Evidence-backed answerability classification for one buyer question."""
-
-    question: str
-    status: AnswerStatus
-    page_url: str | None = None
-    supporting_text: str | None = None
-    explanation: str
 
 
 class FinalAuditReport(Model):

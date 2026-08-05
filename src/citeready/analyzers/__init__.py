@@ -1,6 +1,7 @@
 """Modular, unscored discoverability analyzers."""
 
 from .canonical import CanonicalAnalyzer
+from .answerability import AnswerabilityAnalyzer
 from .citation_readiness import CitationReadinessAnalyzer
 from .discoverability import DiscoverabilityEngine
 from .entity_trust import EntityTrustAnalyzer
@@ -11,6 +12,7 @@ from .sitemap import SitemapAnalyzer
 
 __all__ = [
     "CanonicalAnalyzer",
+    "AnswerabilityAnalyzer",
     "CitationReadinessAnalyzer",
     "DiscoverabilityEngine",
     "EntityTrustAnalyzer",

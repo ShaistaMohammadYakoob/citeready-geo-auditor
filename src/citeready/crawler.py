@@ -10,10 +10,11 @@ from typing import Iterator
 
 import requests
 
-from .analyzers import CitationReadinessAnalyzer, DiscoverabilityEngine, EntityTrustAnalyzer
+from .analyzers import AnswerabilityAnalyzer, CitationReadinessAnalyzer, DiscoverabilityEngine, EntityTrustAnalyzer
 from .config import CrawlerSettings
 from .models import CrawlResult, CrawlWarning, CrawledPage, ResourceFetch
 from .parser import parse_html_page
+from .scoring import GeoScoringEngine
 from .url_utils import is_same_domain, link_priority, normalize_url
 
 
@@ -193,7 +194,19 @@ class SiteCrawler:
             )
             entity_trust = None
 
-        return CrawlResult(
+        try:
+            answerability = AnswerabilityAnalyzer().analyze(pages, entity_trust, analyzed_url)
+        except Exception as error:  # Preserve a usable crawl if answerability analysis encounters malformed data.
+            warnings.append(
+                CrawlWarning(
+                    code="answerability_analysis_failed",
+                    message=f"AI Answerability analysis could not complete: {error}",
+                    url=analyzed_url,
+                )
+            )
+            answerability = None
+
+        crawl_result = CrawlResult(
             requested_url=normalized_start,
             analyzed_url=analyzed_url,
             pages=pages,
@@ -201,10 +214,22 @@ class SiteCrawler:
             discoverability=discoverability,
             citation_readiness=citation_readiness,
             entity_trust=entity_trust,
+            answerability=answerability,
             max_pages=self.settings.max_pages,
             started_at=started_at,
             completed_at=datetime.now(timezone.utc),
         )
+        try:
+            return crawl_result.model_copy(update={"scoring": GeoScoringEngine().score(crawl_result)})
+        except Exception as error:  # A scoring regression must never hide usable analysis output.
+            warnings.append(
+                CrawlWarning(
+                    code="scoring_analysis_failed",
+                    message=f"Transparent GEO scoring could not complete: {error}",
+                    url=analyzed_url,
+                )
+            )
+            return crawl_result.model_copy(update={"warnings": warnings})
 
     def _schedule(
         self,

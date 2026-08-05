@@ -1,4 +1,4 @@
-"""Small command-line smoke test for the crawler and discoverability engine."""
+"""Command-line smoke test for CiteReady's deterministic GEO analyses."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ ENTITY_FINDING_GROUPS = (
 
 
 def main() -> int:
-    """Run a bounded crawl and print the unscored discoverability summary."""
+    """Run a bounded crawl and print the requested deterministic analysis views."""
 
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -58,6 +58,16 @@ def main() -> int:
         action="store_true",
         help="Print detailed, evidence-backed Entity and Trust findings after the summary.",
     )
+    parser.add_argument(
+        "--show-answerability",
+        action="store_true",
+        help="Print deterministic AI Answerability results after the summary.",
+    )
+    parser.add_argument(
+        "--show-score",
+        action="store_true",
+        help="Print the transparent, rule-by-rule GEO score after the summary.",
+    )
     arguments = parser.parse_args()
 
     try:
@@ -78,6 +88,10 @@ def main() -> int:
         _print_citation_findings(result)
     if arguments.show_entity_findings:
         _print_entity_findings(result)
+    if arguments.show_answerability:
+        _print_answerability(result)
+    if arguments.show_score:
+        _print_score(result)
     if result.warnings:
         print("\nWarnings")
         for warning in result.warnings:
@@ -199,6 +213,123 @@ def _print_entity_findings(result: CrawlResult) -> None:
         print(f"\n{group}")
         print("=" * len(group))
         _print_finding_details(findings)
+
+
+def _print_answerability(result: CrawlResult) -> None:
+    """Print Phase 5 question classifications with their exact crawled support."""
+
+    analysis = result.answerability
+    if analysis is None:
+        return
+
+    print("\nAI Answerability")
+    if analysis.primary_entity.entity_name:
+        print(
+            f"Primary entity: {analysis.primary_entity.entity_name} "
+            f"({analysis.primary_entity.confidence.value} confidence)"
+        )
+    for answer in analysis.results:
+        print(f"\n{answer.question.label}")
+        print(f"Status: {answer.status.value}")
+        print(f"Confidence: {answer.confidence.value}")
+        if answer.answer_excerpt:
+            print(f"Answer: {_truncate_evidence(answer.answer_excerpt)}")
+        if answer.supporting_urls:
+            source_label = "Source" if len(answer.supporting_urls) == 1 else "Sources"
+            print(f"{source_label}: {', '.join(answer.supporting_urls)}")
+        if answer.evidence:
+            evidence = answer.evidence[0]
+            if evidence.answer_reason:
+                print(f"Why this answers the question: {evidence.answer_reason}")
+            if evidence.entity_relevance_reason:
+                print(f"Entity relevance: {evidence.entity_relevance_reason}")
+        if answer.conflicting_excerpt:
+            print(f"Conflicting answer: {_truncate_evidence(answer.conflicting_excerpt)}")
+        print(f"Reason: {answer.explanation}")
+        print(f"Recommended action: {answer.recommendation}")
+
+    summary = analysis.summary
+    print("\nSummary:")
+    print(f"Clearly answered: {summary.clearly_answered}")
+    print(f"Partially answered: {summary.partially_answered}")
+    print(f"Not answered: {summary.not_answered}")
+    print(f"Conflicting answer: {summary.conflicting_answer}")
+    print(f"Not applicable: {summary.not_applicable}")
+
+
+def _print_score(result: CrawlResult) -> None:
+    """Print every configured scoring rule so the GEO score is never opaque."""
+
+    score = result.scoring
+    if score is None:
+        print("\nOverall GEO Score")
+        print("Transparent scoring was unavailable. See warnings below.")
+        return
+
+    print("\nOverall GEO Score")
+    print(f"\n{_format_points(score.overall_points)}/100 — {_score_label(score.overall_percentage)}")
+    for category in score.category_scores:
+        print(f"\n{category.category.value}")
+        print(f"{_format_points(category.earned_points)}/{_format_points(category.maximum_points)}")
+        print(f"{_format_points(category.percentage)}%")
+        for rule in category.rule_breakdown:
+            print(
+                f"  {rule.title}: {_format_points(rule.earned_points)}/"
+                f"{_format_points(rule.max_points)} ({rule.status.value})"
+            )
+            print(f"    {rule.reason}")
+
+    print("\nWhy")
+    if score.top_strengths:
+        for strength in score.top_strengths:
+            print(f"+ {strength}")
+    if score.top_weaknesses:
+        for weakness in score.top_weaknesses:
+            print(f"- {weakness}")
+    if not score.top_strengths and not score.top_weaknesses:
+        print("No rule outcomes were available.")
+
+    print("\nPriority actions")
+    if not score.highest_priority_actions:
+        print("No evidence-backed remediation actions were selected.")
+        return
+    for index, action in enumerate(score.highest_priority_actions, start=1):
+        print(f"{index}. {action.title}")
+        print(f"   Recommended action: {action.recommendation}")
+        if action.affected_urls:
+            print("   Affected pages:")
+            for page_url in action.affected_urls:
+                print(f"   - {page_url}")
+        if action.impact is not None:
+            print(f"   Estimated impact: {_impact_label(action.impact)}")
+        if action.effort is not None:
+            print(f"   Estimated effort: {_effort_label(action.effort)}")
+
+
+def _format_points(points: float) -> str:
+    """Avoid visual noise for whole-number rule and category scores."""
+
+    return str(int(points)) if float(points).is_integer() else f"{points:.2f}".rstrip("0").rstrip(".")
+
+
+def _score_label(percentage: float) -> str:
+    """Use a stable, presentation-only label for the overall percentage."""
+
+    if percentage >= 85:
+        return "Excellent"
+    if percentage >= 70:
+        return "Good"
+    if percentage >= 50:
+        return "Needs Improvement"
+    return "Poor"
+
+
+def _impact_label(value: int) -> str:
+    return "High" if value >= 4 else "Medium" if value >= 3 else "Low"
+
+
+def _effort_label(value: int) -> str:
+    return "High" if value >= 4 else "Medium" if value >= 3 else "Low"
 
 
 def _print_finding_details(findings: list[DiscoverabilityFinding]) -> None:

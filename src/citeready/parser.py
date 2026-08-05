@@ -11,7 +11,7 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Comment
 
-from .models import ContentBlock, CrawledPage, ExternalLinkSignal, FreshnessSignal, Heading
+from .models import CallToActionSignal, ContentBlock, CrawledPage, ExternalLinkSignal, FreshnessSignal, Heading
 from .url_utils import is_ignored_link, is_same_domain, normalize_url
 
 
@@ -61,6 +61,8 @@ def parse_html_page(
     image_alt_text = _image_alt_text(content_soup)
     has_contact_form = _has_contact_form(content_soup, final_url)
     author_links = _author_links(soup, final_url)
+    call_to_action_signals = _call_to_action_signals(content_soup, final_url)
+    call_to_action_labels = [signal.label for signal in call_to_action_signals]
     freshness_signals = _extract_freshness_signals(soup, content_soup, json_ld)
 
     return CrawledPage(
@@ -80,6 +82,8 @@ def parse_html_page(
         image_alt_text=image_alt_text,
         has_contact_form=has_contact_form,
         author_links=author_links,
+        call_to_action_labels=call_to_action_labels,
+        call_to_action_signals=call_to_action_signals,
         canonical_url=canonical_url,
         robots_meta=robots_meta,
         json_ld=json_ld,
@@ -342,6 +346,43 @@ def _author_links(soup: BeautifulSoup, page_url: str) -> list[str]:
         if normalized:
             links.append(normalized)
     return sorted(set(links))
+
+
+def _call_to_action_signals(soup: BeautifulSoup, page_url: str) -> list[CallToActionSignal]:
+    """Retain CTA labels and basic document placement without inferring visual design."""
+
+    signals: list[CallToActionSignal] = []
+    seen: set[tuple[str, str | None, str, str | None]] = set()
+    for element in soup.find_all(["a", "button"]):
+        text = _clean_text(element.get_text(" ", strip=True))
+        if not text:
+            continue
+        target_url = None
+        if element.name == "a" and element.get("href"):
+            target_url = normalize_url(str(element.get("href")), base_url=page_url)
+        location = _element_location(element)
+        key = (text, target_url, str(element.name), location)
+        if key in seen:
+            continue
+        seen.add(key)
+        signals.append(
+            CallToActionSignal(
+                label=text,
+                target_url=target_url,
+                element_type=str(element.name),
+                location=location,
+                near_primary_heading=location in {None, "main"} and element.find_previous("h1") is not None,
+            )
+        )
+    return signals
+
+
+def _element_location(element: Any) -> str | None:
+    for ancestor in [element, *element.parents]:
+        name = str(getattr(ancestor, "name", "") or "").lower()
+        if name in {"footer", "header", "nav", "main", "aside"}:
+            return name
+    return None
 
 
 def _element_links(element: Any, page_url: str) -> list[str]:
