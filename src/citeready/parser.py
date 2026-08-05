@@ -10,7 +10,7 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Comment
 
-from .models import CrawledPage, Heading
+from .models import ContentBlock, CrawledPage, FreshnessSignal, Heading
 from .url_utils import is_ignored_link, is_same_domain, normalize_url
 
 
@@ -50,7 +50,10 @@ def parse_html_page(
     robots_meta = _robots_meta(soup)
     json_ld = _json_ld(soup, parse_warnings)
     internal_links, external_links = _extract_links(soup, final_url)
-    text_content = _visible_text(soup)
+    content_soup = _content_soup(soup)
+    content_blocks = _extract_content_blocks(content_soup, final_url)
+    text_content = _visible_text(content_soup)
+    freshness_signals = _extract_freshness_signals(soup, content_soup, json_ld)
 
     return CrawledPage(
         requested_url=requested_url,
@@ -61,12 +64,14 @@ def parse_html_page(
         title=title,
         meta_description=meta_description,
         headings=headings,
+        content_blocks=content_blocks,
         text_content=text_content,
         canonical_url=canonical_url,
         robots_meta=robots_meta,
         json_ld=json_ld,
         internal_links=internal_links,
         external_links=external_links,
+        freshness_signals=freshness_signals,
         parse_warnings=parse_warnings,
         fetched_at=datetime.now(timezone.utc),
     )
@@ -151,12 +156,126 @@ def _extract_links(soup: BeautifulSoup, page_url: str) -> tuple[list[str], list[
     return sorted(internal_links), sorted(external_links)
 
 
-def _visible_text(soup: BeautifulSoup) -> str:
+def _content_soup(soup: BeautifulSoup) -> BeautifulSoup:
+    """Return a copy with non-visible and non-content elements removed."""
+
     content_soup = BeautifulSoup(str(soup), "html.parser")
     for element in content_soup(["script", "style", "noscript", "template", "svg", "iframe"]):
         element.decompose()
     for comment in content_soup.find_all(string=lambda text: isinstance(text, Comment)):
         comment.extract()
+    return content_soup
+
+
+def _extract_content_blocks(soup: BeautifulSoup, page_url: str) -> list[ContentBlock]:
+    """Preserve paragraphs, headings, lists, and tables for local structural checks."""
+
+    blocks: list[ContentBlock] = []
+    root = soup.body or soup
+    for element in root.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "table"]):
+        text = _clean_text(element.get_text(" ", strip=True))
+        if not text:
+            continue
+        tag_name = str(element.name).lower()
+        kind = "heading" if tag_name.startswith("h") else "paragraph"
+        if tag_name == "li":
+            kind = "list_item"
+        elif tag_name == "table":
+            kind = "table"
+        heading_level = int(tag_name[1]) if kind == "heading" else None
+        blocks.append(
+            ContentBlock(
+                kind=kind,
+                text=text,
+                heading_level=heading_level,
+                links=_element_links(element, page_url),
+            )
+        )
+    return blocks
+
+
+def _element_links(element: Any, page_url: str) -> list[str]:
+    links: set[str] = set()
+    for anchor in element.find_all("a", href=True):
+        href = str(anchor["href"])
+        if is_ignored_link(href, page_url):
+            continue
+        normalized = normalize_url(href, base_url=page_url)
+        if normalized:
+            links.add(normalized)
+    return sorted(links)
+
+
+def _extract_freshness_signals(
+    soup: BeautifulSoup,
+    content_soup: BeautifulSoup,
+    json_ld: list[Any],
+) -> list[FreshnessSignal]:
+    """Collect explicit date signals without making a recency judgment."""
+
+    signals: list[FreshnessSignal] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    def add(value: str, source_type: str, evidence: str) -> None:
+        normalized_value = _clean_text(value)
+        key = (normalized_value, source_type, evidence)
+        if normalized_value and key not in seen:
+            seen.add(key)
+            signals.append(
+                FreshnessSignal(
+                    value=normalized_value,
+                    source_type=source_type,
+                    evidence=evidence,
+                )
+            )
+
+    for element in content_soup.find_all("time"):
+        value = str(element.get("datetime") or element.get_text(" ", strip=True))
+        add(value, "HTML time element", str(element))
+
+    date_meta_names = {
+        "article:published_time",
+        "article:modified_time",
+        "date",
+        "datecreated",
+        "datemodified",
+        "datepublished",
+        "last-modified",
+        "last_updated",
+        "updated",
+    }
+    for meta in soup.find_all("meta"):
+        name = str(meta.get("name") or meta.get("property") or "").strip().lower()
+        content = str(meta.get("content") or "").strip()
+        if name in date_meta_names and content:
+            add(content, f"meta {name}", str(meta))
+
+    for key, value in _json_items(json_ld):
+        normalized_key = key.lower().replace("_", "")
+        if normalized_key in {"datepublished", "datemodified", "datecreated", "copyrightyear"}:
+            add(str(value), f"JSON-LD {key}", f"{key}: {value}")
+
+    visible_text = content_soup.get_text(" ", strip=True)
+    for match in re.finditer(r"(?:©|copyright)\s*(\d{4}(?:\s*[-–]\s*\d{4})?)", visible_text, re.I):
+        add(match.group(1), "copyright notice", match.group(0))
+    return signals
+
+
+def _json_items(value: Any) -> list[tuple[str, Any]]:
+    items: list[tuple[str, Any]] = []
+    if isinstance(value, dict):
+        for key, nested_value in value.items():
+            items.append((str(key), nested_value))
+            items.extend(_json_items(nested_value))
+    elif isinstance(value, list):
+        for nested_value in value:
+            items.extend(_json_items(nested_value))
+    return items
+
+
+def _visible_text(content_soup: BeautifulSoup) -> str:
+    """Return normalized user-visible text from an already-cleaned document."""
+
     return _clean_text(content_soup.get_text(" ", strip=True))
 
 

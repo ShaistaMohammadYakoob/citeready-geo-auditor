@@ -10,7 +10,7 @@ from typing import Iterator
 
 import requests
 
-from .analyzers import DiscoverabilityEngine
+from .analyzers import CitationReadinessAnalyzer, DiscoverabilityEngine
 from .config import CrawlerSettings
 from .models import CrawlResult, CrawlWarning, CrawledPage, ResourceFetch
 from .parser import parse_html_page
@@ -169,12 +169,25 @@ class SiteCrawler:
             )
             discoverability = None
 
+        try:
+            citation_readiness = CitationReadinessAnalyzer().analyze(pages)
+        except Exception as error:  # Preserve a useful crawl if citation analysis encounters malformed data.
+            warnings.append(
+                CrawlWarning(
+                    code="citation_readiness_analysis_failed",
+                    message=f"Citation Readiness analysis could not complete: {error}",
+                    url=analyzed_url,
+                )
+            )
+            citation_readiness = None
+
         return CrawlResult(
             requested_url=normalized_start,
             analyzed_url=analyzed_url,
             pages=pages,
             warnings=warnings,
             discoverability=discoverability,
+            citation_readiness=citation_readiness,
             max_pages=self.settings.max_pages,
             started_at=started_at,
             completed_at=datetime.now(timezone.utc),

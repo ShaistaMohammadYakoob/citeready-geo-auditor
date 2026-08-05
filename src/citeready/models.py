@@ -29,6 +29,14 @@ class Severity(str, Enum):
     INFO = "info"
 
 
+class Confidence(str, Enum):
+    """Confidence in a deterministic finding, not a quality score."""
+
+    HIGH = "High"
+    MEDIUM = "Medium"
+    LOW = "Low"
+
+
 class AnswerStatus(str, Enum):
     """Evidence-based outcome for an important customer question."""
 
@@ -59,6 +67,23 @@ class Heading(Model):
     text: str
 
 
+class ContentBlock(Model):
+    """A meaningful HTML content element retained in document order."""
+
+    kind: str
+    text: str
+    heading_level: int | None = Field(default=None, ge=1, le=6)
+    links: list[str] = Field(default_factory=list)
+
+
+class FreshnessSignal(Model):
+    """A date or copyright signal extracted without judging its recency."""
+
+    value: str
+    source_type: str
+    evidence: str
+
+
 class CrawledPage(Model):
     """Server-rendered content and metadata extracted from one HTML page."""
 
@@ -70,18 +95,22 @@ class CrawledPage(Model):
     title: str | None = None
     meta_description: str | None = None
     headings: list[Heading] = Field(default_factory=list)
+    content_blocks: list[ContentBlock] = Field(default_factory=list)
     text_content: str = ""
     canonical_url: str | None = None
     robots_meta: dict[str, str] = Field(default_factory=dict)
     json_ld: list[Any] = Field(default_factory=list)
     internal_links: list[str] = Field(default_factory=list)
     external_links: list[str] = Field(default_factory=list)
+    freshness_signals: list[FreshnessSignal] = Field(default_factory=list)
     parse_warnings: list[str] = Field(default_factory=list)
     fetched_at: datetime
 
 
 class Evidence(Model):
     """Exact source material supporting a later audit conclusion."""
+
+    model_config = ConfigDict(str_strip_whitespace=False)
 
     page_url: str
     exact_text: str
@@ -96,12 +125,13 @@ class FindingStatus(str, Enum):
 
 
 class DiscoverabilityFinding(Model):
-    """The shared, unscored contract for every discoverability finding."""
+    """The shared, unscored contract for every analyzer finding."""
 
     id: str = Field(default_factory=lambda: f"disc-{uuid4().hex}")
     category: AuditCategory = AuditCategory.DISCOVERABILITY
     title: str
     severity: Severity
+    confidence: Confidence = Confidence.MEDIUM
     status: FindingStatus = FindingStatus.DETECTED
     affected_url: str
     evidence: list[Evidence] = Field(default_factory=list)
@@ -266,6 +296,41 @@ class DiscoverabilityAnalysis(Model):
     findings: list[DiscoverabilityFinding] = Field(default_factory=list)
 
 
+class DirectAnswerAssessment(Model):
+    """Deterministic assessment of whether a page opening explains its topic."""
+
+    is_strong: bool
+    opening_excerpt: str
+    reason: str
+
+
+class FaqAssessment(Model):
+    """Visible and structured FAQ signals found on one page."""
+
+    has_faq_schema: bool
+    faq_schema_evidence: list[str] = Field(default_factory=list)
+    visible_faq_headings: list[str] = Field(default_factory=list)
+    question_headings: list[str] = Field(default_factory=list)
+    unanswered_question_headings: list[str] = Field(default_factory=list)
+
+
+class CitationReadinessPageAnalysis(Model):
+    """Unscored citation-readiness signals for one crawled page."""
+
+    page_url: str
+    heading_hierarchy: list[Heading] = Field(default_factory=list)
+    direct_answer: DirectAnswerAssessment
+    faq: FaqAssessment
+    freshness_signals: list[FreshnessSignal] = Field(default_factory=list)
+
+
+class CitationReadinessAnalysis(Model):
+    """Aggregate output from the deterministic Citation Readiness analyzer."""
+
+    pages: list[CitationReadinessPageAnalysis] = Field(default_factory=list)
+    findings: list[DiscoverabilityFinding] = Field(default_factory=list)
+
+
 class CrawlResult(Model):
     """The complete output of a bounded crawl."""
 
@@ -274,6 +339,7 @@ class CrawlResult(Model):
     pages: list[CrawledPage] = Field(default_factory=list)
     warnings: list[CrawlWarning] = Field(default_factory=list)
     discoverability: DiscoverabilityAnalysis | None = None
+    citation_readiness: CitationReadinessAnalysis | None = None
     max_pages: int = Field(ge=1, le=12)
     started_at: datetime
     completed_at: datetime
