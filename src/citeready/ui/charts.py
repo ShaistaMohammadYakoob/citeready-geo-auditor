@@ -18,7 +18,7 @@ def category_comparison_chart(scores: list[CategoryScore], mode: ThemeMode) -> g
             x=[score.percentage for score in scores],
             y=[score.category.value for score in scores],
             orientation="h",
-            marker_color=tokens["primary"],
+            marker_color=[tokens["cyan"], tokens["primary"], tokens["mint"], tokens["warm"]][: len(scores)],
             text=[f"{score.percentage:.0f}%" for score in scores],
             textposition="outside",
             hovertemplate="%{y}<br>%{x:.1f}%<extra></extra>",
@@ -44,7 +44,8 @@ def impact_effort_chart(actions: list[ActionCard], mode: ThemeMode) -> go.Figure
                 mode="markers",
                 marker={
                     "size": [max(10, min(26, 8 + len(action.affected_urls) * 3)) for action in visible_actions],
-                    "color": tokens["primary"],
+                    "color": ([tokens["primary"], tokens["cyan"], tokens["mint"], tokens["warm"]]
+                    * ((len(visible_actions) + 3) // 4))[: len(visible_actions)],
                     "line": {"color": tokens["surface"], "width": 1.5},
                     "opacity": 0.88,
                 },

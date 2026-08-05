@@ -9,34 +9,70 @@ from ..models import Severity
 
 ThemeMode = Literal["light", "dark"]
 
+# The palette is deliberately small: all component states are derived from the
+# approved ocean colours with transparency, rather than introducing new hues.
 LIGHT_TOKENS = {
-    "background": "#F5F6F8",
+    "background": "#F3F8FB",
     "surface": "#FFFFFF",
-    "raised_surface": "#FAFAFB",
-    "text": "#16181D",
-    "muted": "#626875",
-    "border": "#E2E5EA",
-    "primary": "#315CFF",
-    "success": "#177D52",
-    "warning": "#A86209",
-    "danger": "#B42335",
-    "shadow": "0 8px 24px rgba(22, 24, 29, 0.06)",
-    "plot_grid": "#E9ECF1",
+    "raised_surface": "#F3F8FB",
+    "surface_hover": "rgba(125, 211, 252, 0.12)",
+    "input_surface": "#FFFFFF",
+    "code_surface": "#F3F8FB",
+    "text": "#102A43",
+    "muted": "#52677B",
+    "border": "#D9E6EE",
+    "border_strong": "#7DD3FC",
+    "primary": "#0F8B8D",
+    "primary_soft": "rgba(15, 139, 141, 0.12)",
+    "on_primary": "#FFFFFF",
+    "ripple": "rgba(255, 255, 255, 0.28)",
+    "success": "#28A879",
+    "success_soft": "rgba(40, 168, 121, 0.12)",
+    "warning": "#E6A23C",
+    "warning_soft": "rgba(230, 162, 60, 0.14)",
+    "danger": "#D95D5D",
+    "danger_soft": "rgba(217, 93, 93, 0.12)",
+    "navy": "#102A43",
+    "cyan": "#38BDF8",
+    "mint": "#74D3AE",
+    "sky": "#7DD3FC",
+    "warm": "#F4B860",
+    "shadow": "0 12px 30px rgba(16, 42, 67, 0.10)",
+    "shadow_subtle": "0 5px 16px rgba(16, 42, 67, 0.08)",
+    "shadow_hover": "0 18px 38px rgba(16, 42, 67, 0.16)",
+    "plot_grid": "#D9E6EE",
 }
 
 DARK_TOKENS = {
-    "background": "#0E1014",
-    "surface": "#15181E",
-    "raised_surface": "#1B1F27",
-    "text": "#F1F3F7",
-    "muted": "#9BA3B1",
-    "border": "#2B303A",
-    "primary": "#7894FF",
-    "success": "#55B98A",
-    "warning": "#E0A354",
-    "danger": "#EF7A88",
-    "shadow": "0 8px 24px rgba(0, 0, 0, 0.24)",
-    "plot_grid": "#2B303A",
+    "background": "#071A2B",
+    "surface": "#0E2438",
+    "raised_surface": "#12304A",
+    "surface_hover": "rgba(125, 211, 252, 0.12)",
+    "input_surface": "#0A2033",
+    "code_surface": "#0A2033",
+    "text": "#EFF8FF",
+    "muted": "#A9BDD0",
+    "border": "#23425A",
+    "border_strong": "#38BDF8",
+    "primary": "#0F8B8D",
+    "primary_soft": "rgba(15, 139, 141, 0.22)",
+    "on_primary": "#FFFFFF",
+    "ripple": "rgba(255, 255, 255, 0.20)",
+    "success": "#28A879",
+    "success_soft": "rgba(40, 168, 121, 0.18)",
+    "warning": "#E6A23C",
+    "warning_soft": "rgba(230, 162, 60, 0.18)",
+    "danger": "#D95D5D",
+    "danger_soft": "rgba(217, 93, 93, 0.18)",
+    "navy": "#102A43",
+    "cyan": "#38BDF8",
+    "mint": "#74D3AE",
+    "sky": "#7DD3FC",
+    "warm": "#F4B860",
+    "shadow": "0 13px 32px rgba(0, 0, 0, 0.26)",
+    "shadow_subtle": "0 6px 18px rgba(0, 0, 0, 0.24)",
+    "shadow_hover": "0 20px 42px rgba(0, 0, 0, 0.34)",
+    "plot_grid": "#23425A",
 }
 
 
@@ -90,9 +126,9 @@ def severity_style(severity: Severity | str, mode: ThemeMode) -> dict[str, str]:
     if value == Severity.CRITICAL.value:
         return {"label": "Critical", "symbol": "!", "color": tokens["danger"]}
     if value == Severity.HIGH.value:
-        return {"label": "High", "symbol": "!", "color": tokens["danger"]}
+        return {"label": "High", "symbol": "!", "color": tokens["warm"]}
     if value == Severity.MEDIUM.value:
         return {"label": "Medium", "symbol": "!", "color": tokens["warning"]}
     if value == Severity.LOW.value:
-        return {"label": "Low", "symbol": "i", "color": tokens["primary"]}
+        return {"label": "Low", "symbol": "i", "color": tokens["sky"]}
     return {"label": "Info", "symbol": "i", "color": tokens["muted"]}

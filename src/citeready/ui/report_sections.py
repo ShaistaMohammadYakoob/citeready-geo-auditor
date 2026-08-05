@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import os
-
-import pandas as pd
 import streamlit as st
 
 from ..models import AuditCategory, CrawlResult, Severity, SitemapAnalysisStatus
-from .charts import category_comparison_chart, impact_effort_chart
+from .charts import impact_effort_chart
 from .components import render_action_ticket, render_finding_card, render_score_badge
 from .dashboard_helpers import (
     action_cards_for_report,
@@ -27,6 +25,7 @@ def render_report(result: CrawlResult, mode: ThemeMode) -> bool:
 
     rerun_requested = render_report_header(result)
     render_score_panel(result, mode)
+    render_category_cards(result, mode)
     render_executive_summary(result)
     render_priority_actions(result)
     render_impact_effort(result, mode)
@@ -72,6 +71,7 @@ def render_score_panel(result: CrawlResult, mode: ThemeMode) -> None:
         return
     score = result.scoring
     status = score_status_style(score.overall_percentage, mode)
+    coverage = "Partial coverage" if result.warnings else "Full crawl coverage"
     category_rows = "".join(
         f"""
         <div class="cr-category-row">
@@ -90,12 +90,41 @@ def render_score_panel(result: CrawlResult, mode: ThemeMode) -> None:
             <div class="cr-score-number">{_number(score.overall_points)}<span class="cr-score-unit">/100</span></div>
             <div class="cr-score-label" style="color: {status['color']}">{status['symbol']} {status['label']}</div>
             <div class="cr-muted">{safe_html(_score_interpretation(score.overall_percentage))}</div>
+            <div class="cr-score-facts"><span>{len(result.pages)}/{result.max_pages} pages crawled</span><span>{safe_html(coverage)}</span></div>
           </div>
           <div>{category_rows}</div>
         </section>
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_category_cards(result: CrawlResult, mode: ThemeMode) -> None:
+    """Show each existing category score in a concise visual card."""
+
+    if not result.scoring:
+        return
+    accent_by_category = {
+        AuditCategory.DISCOVERABILITY: "var(--cr-cyan)",
+        AuditCategory.CITATION_READINESS: "var(--cr-primary)",
+        AuditCategory.ENTITY_TRUST: "var(--cr-mint)",
+        AuditCategory.ANSWERABILITY: "var(--cr-warm)",
+    }
+    cards = []
+    for index, item in enumerate(result.scoring.category_scores):
+        status = score_status_style(item.percentage, mode)
+        accent = accent_by_category.get(item.category, "var(--cr-primary)")
+        cards.append(
+            f"""
+            <article class="cr-category-card" style="--category-color: {accent}; --entry-delay: {120 + index * 70}ms">
+              <div class="cr-category-card-title">{safe_html(item.category.value)}</div>
+              <div class="cr-category-card-points">{_number(item.earned_points)}/{_number(item.maximum_points)}</div>
+              <div class="cr-category-card-meta">{_number(item.percentage)}% · {safe_html(status['label'])}</div>
+              <div class="cr-progress-track"><div class="cr-progress-fill" style="width: {max(0, min(100, item.percentage))}%"></div></div>
+            </article>
+            """
+        )
+    st.markdown(f"<section class='cr-category-card-grid'>{''.join(cards)}</section>", unsafe_allow_html=True)
 
 
 def render_executive_summary(result: CrawlResult) -> None:
@@ -108,15 +137,15 @@ def render_executive_summary(result: CrawlResult) -> None:
     actions = action_cards_for_report(result)[:3]
     columns = st.columns(3)
     content = (
-        ("Strongest signals", strengths, "No scored strengths were available."),
-        ("Biggest risks", weaknesses, "No evidence-backed risks were selected."),
-        ("Start here Monday", [action.title for action in actions], "No action plan was selected."),
+        ("What is working", strengths, "No scored strengths were available.", "var(--cr-success)"),
+        ("Main risks", weaknesses, "No evidence-backed risks were selected.", "var(--cr-warning)"),
+        ("Start here", [action.title for action in actions], "No action plan was selected.", "var(--cr-primary)"),
     )
-    for column, (title, items, empty) in zip(columns, content, strict=True):
+    for column, (title, items, empty, accent) in zip(columns, content, strict=True):
         with column:
             list_items = "".join(f"<div class='cr-summary-item'>{safe_html(item)}</div>" for item in items) or f"<div class='cr-summary-item'>{safe_html(empty)}</div>"
             st.markdown(
-                f"<section class='cr-summary-column'><div class='cr-eyebrow'>{safe_html(title)}</div>{list_items}</section>",
+                f"<section class='cr-summary-column' style='--summary-color: {accent}'><div class='cr-eyebrow'>{safe_html(title)}</div>{list_items}</section>",
                 unsafe_allow_html=True,
             )
 
@@ -212,14 +241,14 @@ def render_answerability_matrix(result: CrawlResult) -> None:
     rows = [
         {
             "Question": item.question.label,
-            "Status": item.status.value,
+            "Status": _answerability_status_badge(item.status.value),
             "Confidence": item.confidence.value,
             "Extracted answer": item.answer_excerpt or "—",
             "Source": item.supporting_urls[0] if item.supporting_urls else "—",
         }
         for item in result.answerability.results
     ]
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    _render_themed_table(rows, html_columns={"Status"})
     with st.expander("Detailed answerability reasoning"):
         for item in result.answerability.results:
             st.markdown(f"**{item.question.label}** — {item.status.value}")
@@ -239,7 +268,7 @@ def render_page_inventory(result: CrawlResult) -> None:
     if not rows:
         st.info("No pages match this filter.")
         return
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    _render_themed_table(rows)
 
 
 def render_limitations(result: CrawlResult) -> None:
@@ -305,3 +334,40 @@ def _score_interpretation(percentage: float) -> str:
     if percentage >= 60:
         return "Important signals are present, but targeted gaps are limiting consistent AI understanding."
     return "Material evidence and accessibility gaps are likely limiting reliable AI visibility."
+
+
+def _render_themed_table(rows: list[dict[str, object]], *, html_columns: set[str] | None = None) -> None:
+    """Render responsive report tables that follow the active CSS variable theme."""
+
+    if not rows:
+        return
+    html_columns = html_columns or set()
+    columns = list(rows[0])
+    headings = "".join(f"<th>{safe_html(column)}</th>" for column in columns)
+    body_rows = []
+    for row in rows:
+        cells = []
+        for column in columns:
+            value = str(row.get(column, "—"))
+            class_name = " class='cr-table-url'" if column in {"URL", "Source"} and value != "—" else ""
+            cell_content = value if column in html_columns else safe_html(value)
+            cells.append(f"<td{class_name}>{cell_content}</td>")
+        body_rows.append(f"<tr>{''.join(cells)}</tr>")
+    st.markdown(
+        f"<div class='cr-table-wrap'><table class='cr-table'><thead><tr>{headings}</tr></thead><tbody>{''.join(body_rows)}</tbody></table></div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _answerability_status_badge(status: str) -> str:
+    """Return presentation-only status markup from a closed set of model values."""
+
+    status_styles = {
+        "Clearly answered": ("var(--cr-success)", "var(--cr-success-soft)"),
+        "Partially answered": ("var(--cr-warning)", "var(--cr-warning-soft)"),
+        "Not answered": ("var(--cr-danger)", "var(--cr-danger-soft)"),
+        "Conflicting answer": ("var(--cr-danger)", "var(--cr-danger-soft)"),
+        "Not applicable": ("var(--cr-muted)", "var(--cr-raised-surface)"),
+    }
+    color, surface = status_styles.get(status, ("var(--cr-muted)", "var(--cr-raised-surface)"))
+    return f"<span class='cr-answer-status' style='--status-color: {color}; --status-soft: {surface}'>{safe_html(status)}</span>"

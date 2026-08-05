@@ -9,6 +9,8 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
+from streamlit.testing.v1 import AppTest
+
 from citeready.models import AuditCategory, CategoryScore, CrawlResult, OverallScore
 from citeready.ui.charts import category_comparison_chart, impact_effort_chart
 from citeready.ui.dashboard_helpers import (
@@ -18,6 +20,7 @@ from citeready.ui.dashboard_helpers import (
     safe_html,
     set_theme_mode,
 )
+from citeready.ui.animations import animation_css
 from citeready.ui.styles import dashboard_css
 from citeready.ui.theme import score_status_style, theme_tokens
 
@@ -43,8 +46,10 @@ def result(scores: list[CategoryScore]) -> CrawlResult:
 
 class UiRefinementTests(unittest.TestCase):
     def test_theme_tokens_change_between_light_and_dark(self) -> None:
-        self.assertEqual(theme_tokens("light")["background"], "#F5F6F8")
-        self.assertEqual(theme_tokens("dark")["background"], "#0E1014")
+        self.assertEqual(theme_tokens("light")["background"], "#F3F8FB")
+        self.assertEqual(theme_tokens("dark")["background"], "#071A2B")
+        self.assertEqual(theme_tokens("light")["primary"], "#0F8B8D")
+        self.assertEqual(theme_tokens("dark")["surface"], "#0E2438")
         self.assertNotEqual(theme_tokens("light")["text"], theme_tokens("dark")["text"])
 
     def test_plotly_charts_use_active_theme_layout(self) -> None:
@@ -58,7 +63,7 @@ class UiRefinementTests(unittest.TestCase):
         dark_chart = category_comparison_chart([score], "dark")
 
         self.assertEqual(light_chart.layout.paper_bgcolor, "rgba(0,0,0,0)")
-        self.assertEqual(dark_chart.layout.font.color, "#F1F3F7")
+        self.assertEqual(dark_chart.layout.font.color, "#EFF8FF")
         self.assertEqual(dark_chart.layout.template.layout.paper_bgcolor, "rgb(17,17,17)")
         self.assertEqual(len(impact_effort_chart([], "light").layout.annotations), 4)
 
@@ -74,6 +79,16 @@ class UiRefinementTests(unittest.TestCase):
         self.assertEqual(set_theme_mode(state, True), "dark")
         self.assertEqual(state["audit_result"], "kept")
         self.assertEqual(initialise_theme_state(state), "dark")
+
+    def test_segmented_theme_control_updates_the_rendered_app_state(self) -> None:
+        app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py")
+        app.run(timeout=10)
+        self.assertEqual(app.button_group[0].value, "light")
+
+        app.button_group[0].select("dark").run(timeout=10)
+        self.assertEqual(app.button_group[0].value, "dark")
+        self.assertEqual(app.session_state["theme_mode"], "dark")
+        self.assertIsNone(app.session_state["audit_result"])
 
     def test_category_summary_generation_preserves_score_values(self) -> None:
         score = CategoryScore(
@@ -97,8 +112,34 @@ class UiRefinementTests(unittest.TestCase):
     def test_reduced_motion_rules_are_present_in_custom_css(self) -> None:
         css = dashboard_css("dark")
         self.assertIn("prefers-reduced-motion: reduce", css)
-        self.assertIn("--cr-background: #0E1014", css)
+        self.assertIn("--cr-background: #071A2B", css)
         self.assertIn("transition-duration: .01ms", css)
+
+    def test_dark_mode_css_styles_native_streamlit_surfaces(self) -> None:
+        css = dashboard_css("dark")
+        self.assertIn("[data-testid=\"stExpander\"]", css)
+        self.assertIn("[data-testid=\"stCodeBlock\"]", css)
+        self.assertIn("[data-testid=\"stDataFrame\"]", css)
+        self.assertIn("var(--cr-code-surface)", css)
+        self.assertIn("var(--cr-input-surface)", css)
+
+    def test_premium_component_styles_include_compact_interactions(self) -> None:
+        css = dashboard_css("light")
+        self.assertIn(".cr-nav-brand", css)
+        self.assertIn(".cr-action-ticket", css)
+        self.assertIn(".cr-progress-fill", css)
+        self.assertIn(".cr-table", css)
+        self.assertIn("@keyframes cr-ripple", css)
+        self.assertIn("180ms", css)
+
+    def test_ocean_motion_system_includes_requested_entrances(self) -> None:
+        css = dashboard_css("light")
+        keyframes = animation_css()
+        self.assertIn("cr-mesh-shift", keyframes)
+        self.assertIn("cr-progress-fill", keyframes)
+        self.assertIn("cr-active-pulse", keyframes)
+        self.assertIn("stSegmentedControl", css)
+        self.assertIn("cr-category-card-grid", css)
 
     def test_safe_html_escapes_untrusted_finding_content(self) -> None:
         escaped = safe_html('<script>alert("x")</script>')

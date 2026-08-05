@@ -1,4 +1,4 @@
-"""Reusable Streamlit components for the refined CiteReady interface."""
+"""Reusable Streamlit components for CiteReady's presentation layer."""
 
 from __future__ import annotations
 
@@ -25,52 +25,95 @@ AUDIT_STEPS = (
 
 
 def render_navigation(mode: ThemeMode, on_theme_change: Callable[[bool], None]) -> None:
-    """Render the compact navigation and persistent light/dark preference."""
+    """Render the compact, session-safe product navigation."""
 
-    left, middle, right = st.columns((5, 2, 3), vertical_alignment="center")
+    left, theme, methodology, github = st.columns((5.5, 1.45, 1.05, 1.0), vertical_alignment="center")
     with left:
         st.markdown(
-            "<div class='cr-nav'><div><div class='cr-wordmark'>CiteReady</div>"
+            "<div class='cr-nav-brand'><div class='cr-logo-mark'>CR</div><div><div class='cr-wordmark'>CiteReady</div>"
             "<div class='cr-product-label'>GEO Visibility Auditor</div></div></div>",
             unsafe_allow_html=True,
         )
-    with middle:
-        if st.button("Methodology", use_container_width=True, key="methodology-nav"):
+    with theme:
+        _render_theme_control(mode, on_theme_change)
+    with methodology:
+        if st.button("Methodology", use_container_width=True, key="about-nav"):
             st.session_state["show_methodology"] = True
-    with right:
-        is_dark = st.toggle("Dark mode", value=mode == "dark", key="theme-toggle")
-        on_theme_change(is_dark)
-        repository_url = os.getenv("CITEREADY_REPOSITORY_URL")
-        if repository_url:
-            st.link_button("GitHub ↗", repository_url, use_container_width=True)
+    with github:
+        st.link_button("GitHub", os.getenv("CITEREADY_REPOSITORY_URL", "https://github.com"), use_container_width=True)
+
+
+def _render_theme_control(mode: ThemeMode, on_theme_change: Callable[[bool], None]) -> None:
+    """Render a native selector and synchronise the mode before rerendering."""
+
+    selector_key = "theme-mode-selector"
+    if selector_key not in st.session_state:
+        st.session_state[selector_key] = mode
+
+    def sync_theme_mode() -> None:
+        on_theme_change(st.session_state[selector_key] == "dark")
+
+    st.segmented_control(
+        "Theme mode",
+        options=("light", "dark"),
+        format_func=lambda option: "☀ Light" if option == "light" else "🌙 Dark",
+        key=selector_key,
+        on_change=sync_theme_mode,
+        label_visibility="collapsed",
+        width="stretch",
+    )
 
 
 def render_hero() -> None:
-    """Render the editorial two-column audit introduction."""
+    """Render the ocean-themed introduction and four audit areas."""
 
     st.markdown(
         """
-        <div class="cr-hero">
-          <section class="cr-hero-copy">
+        <section class="cr-hero">
+          <div class="cr-hero-copy">
             <div class="cr-eyebrow">Evidence-based GEO audit</div>
-            <h1 class="cr-hero-title">Can AI engines understand and cite your website?</h1>
-            <p>Audit the technical, content, trust, and answerability signals that make a website easier for modern AI systems to discover and explain.</p>
-          </section>
-          <aside class="cr-area-map" aria-label="Four audit areas">
-            <div class="cr-eyebrow">Four audit areas</div>
-            <div class="cr-area-row"><strong>Discover</strong><span>Access &amp; crawl signals</span></div>
-            <div class="cr-area-row"><strong>Understand</strong><span>Content structure</span></div>
-            <div class="cr-area-row"><strong>Trust</strong><span>Entity &amp; authority</span></div>
-            <div class="cr-area-row"><strong>Answer</strong><span>Customer questions</span></div>
-          </aside>
-        </div>
+            <h1 class="cr-hero-title">Can AI engines <span class="cr-title-accent">discover</span>,
+              <span class="cr-title-underline">understand</span> and cite your website?</h1>
+            <p>Run an evidence-based GEO audit across technical access, content structure, entity trust and answerability.</p>
+            <div class="cr-hero-chips" aria-label="Audit coverage">
+              <span class="cr-hero-chip">Discoverability</span>
+              <span class="cr-hero-chip">Citation readiness</span>
+              <span class="cr-hero-chip">Entity trust</span>
+              <span class="cr-hero-chip">Answerability</span>
+            </div>
+          </div>
+          <div class="cr-area-grid" aria-label="Four audit areas">
+            <article class="cr-area-card" style="--area-color: var(--cr-cyan); --entry-delay: 190ms">
+              <div class="cr-area-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 18h16M6 15l4-5 3 3 5-7"/><path d="M17 6h1v1"/></svg></div>
+              <div class="cr-area-label">Discover</div><div class="cr-area-description">Access and crawl signals</div>
+            </article>
+            <article class="cr-area-card" style="--area-color: var(--cr-primary); --entry-delay: 260ms">
+              <div class="cr-area-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 4h9l3 3v13H6z"/><path d="M9 11h6M9 15h5M15 4v4h4"/></svg></div>
+              <div class="cr-area-label">Understand</div><div class="cr-area-description">Content and citation structure</div>
+            </article>
+            <article class="cr-area-card" style="--area-color: var(--cr-mint); --entry-delay: 330ms">
+              <div class="cr-area-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l7 4v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V7z"/><path d="M9 12l2 2 4-4"/></svg></div>
+              <div class="cr-area-label">Trust</div><div class="cr-area-description">Entity and authority signals</div>
+            </article>
+            <article class="cr-area-card" style="--area-color: var(--cr-warm); --entry-delay: 400ms">
+              <div class="cr-area-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4z"/><path d="M9 9h6M9 12h4"/></svg></div>
+              <div class="cr-area-label">Answer</div><div class="cr-area-description">Customer-question coverage</div>
+            </article>
+          </div>
+        </section>
         """,
         unsafe_allow_html=True,
     )
 
 
+def render_audit_console_intro() -> None:
+    """Label the existing form as the hero-adjacent audit console."""
+
+    st.markdown("<div class='cr-audit-console-intro'>Start a website audit</div>", unsafe_allow_html=True)
+
+
 def render_timeline(completed: set[str], active: str | None = None) -> None:
-    """Render a real state timeline with completed, active, and pending labels."""
+    """Render the existing audit state as a readable animated timeline."""
 
     steps = []
     for step_id, label in AUDIT_STEPS:
@@ -81,12 +124,13 @@ def render_timeline(completed: set[str], active: str | None = None) -> None:
 
 
 def render_action_ticket(index: int, action: ActionCard, *, primary: bool = False) -> None:
-    """Render a priority action as a compact evidence-backed audit ticket."""
+    """Render a priority action as an evidence-backed audit ticket."""
 
     card_class = " cr-action-ticket-primary" if primary else ""
+    delay = min(120 + index * 70, 520)
     st.markdown(
         f"""
-        <article class="cr-action-ticket{card_class}">
+        <article class="cr-action-ticket{card_class}" style="--entry-delay: {delay}ms">
           <div class="cr-ticket-topline">
             <div>
               <div class="cr-ticket-rank">ACTION {index:02d} · PRIORITY {action.priority_score}/100</div>
@@ -110,7 +154,7 @@ def render_action_ticket(index: int, action: ActionCard, *, primary: bool = Fals
 
 
 def render_finding_card(finding: DiscoverabilityFinding, mode: ThemeMode) -> None:
-    """Render a compact finding while retaining full evidence in the underlying model."""
+    """Render a compact finding while retaining full evidence in the model."""
 
     severity = severity_style(finding.severity, mode)
     st.markdown(

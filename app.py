@@ -8,7 +8,7 @@ import streamlit as st
 
 from citeready.config import load_crawler_settings
 from citeready.crawler import SiteCrawler
-from citeready.ui.components import render_hero, render_navigation, render_timeline
+from citeready.ui.components import render_audit_console_intro, render_hero, render_navigation, render_timeline
 from citeready.ui.dashboard_helpers import initialise_theme_state, set_theme_mode
 from citeready.ui.report_sections import render_report
 from citeready.ui.styles import dashboard_css
@@ -30,6 +30,7 @@ def main() -> None:
     mode = initialise_theme_state(st.session_state)
     st.markdown(dashboard_css(mode), unsafe_allow_html=True)
     render_hero()
+    render_audit_console_intro()
 
     request = _render_audit_input()
     if request:
