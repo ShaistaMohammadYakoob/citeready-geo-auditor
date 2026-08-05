@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 from typing import Any
+from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class AuditCategory(str, Enum):
@@ -88,16 +89,36 @@ class Evidence(Model):
     context: str | None = None
 
 
-class DiscoverabilityFinding(Model):
-    """An evidence-backed discoverability issue with no score attached."""
+class FindingStatus(str, Enum):
+    """Lifecycle state for an evidence-backed finding."""
 
+    DETECTED = "detected"
+
+
+class DiscoverabilityFinding(Model):
+    """The shared, unscored contract for every discoverability finding."""
+
+    id: str = Field(default_factory=lambda: f"disc-{uuid4().hex}")
+    category: AuditCategory = AuditCategory.DISCOVERABILITY
     title: str
     severity: Severity
-    evidence: list[Evidence] = Field(default_factory=list)
+    status: FindingStatus = FindingStatus.DETECTED
     affected_url: str
+    evidence: list[Evidence] = Field(default_factory=list)
     why_it_matters: str
-    recommended_fix: str
+    recommendation: str = Field(
+        validation_alias=AliasChoices("recommendation", "recommended_fix"),
+    )
     copy_paste_fix: str | None = None
+    # Deliberately unestimated until the scoring and prioritization phase.
+    impact: int | None = Field(default=None, ge=1, le=5)
+    effort: int | None = Field(default=None, ge=1, le=5)
+
+    @property
+    def recommended_fix(self) -> str:
+        """Compatibility accessor for callers using the original Phase 2 name."""
+
+        return self.recommendation
 
 
 class ResourceFetch(Model):

@@ -66,7 +66,7 @@ class CanonicalAnalyzer:
             evidence=[
                 Evidence(
                     page_url=page.url,
-                    exact_text="No <link rel=\"canonical\"> tag was extracted from this page.",
+                    exact_text='No rel="canonical" element was found in the page head.',
                     source_type="HTML metadata",
                 )
             ],
@@ -75,8 +75,8 @@ class CanonicalAnalyzer:
                 "A canonical URL tells crawlers which version of a page should represent the content when "
                 "similar URLs exist."
             ),
-            recommended_fix="Add one absolute canonical link in the page <head> that points to the preferred URL.",
-            copy_paste_fix=f'<link rel="canonical" href="{page.url}">',
+            recommendation="Add a self-referencing canonical tag in the page head.",
+            copy_paste_fix=f'<link rel="canonical" href="{page.url}" />',
         )
 
     @staticmethod
@@ -97,6 +97,6 @@ class CanonicalAnalyzer:
                 "An external canonical can tell crawlers to attribute this page's content to another website, "
                 "reducing the chance that your domain is selected as the source."
             ),
-            recommended_fix="Confirm the cross-domain canonical is intentional; otherwise replace it with this page's preferred URL.",
-            copy_paste_fix=f'<link rel="canonical" href="{page.url}">',
+            recommendation="Confirm the cross-domain canonical is intentional; otherwise replace it with this page's preferred URL.",
+            copy_paste_fix=None,
         )

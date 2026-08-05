@@ -59,8 +59,8 @@ class MetaRobotsAnalyzer:
                 "A noindex directive asks search engines not to include this page in their index, which "
                 "can make it harder to discover and cite."
             ),
-            recommended_fix="Remove noindex from public pages that should be discoverable, or replace it with index, follow.",
-            copy_paste_fix='<meta name="robots" content="index, follow">',
+            recommendation="Remove noindex from public pages that should be discoverable, or replace it with index, follow.",
+            copy_paste_fix=None,
         )
 
 

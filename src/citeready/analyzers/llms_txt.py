@@ -43,15 +43,8 @@ class LlmsTxtAnalyzer:
                 "llms.txt is an emerging, optional convention for presenting a concise map of useful site "
                 "content to language-model tools. It is not a guarantee of inclusion."
             ),
-            recommended_fix="Consider publishing a short, accurate llms.txt file that links to your most useful public pages.",
-            copy_paste_fix=(
-                "# Company Name\n\n"
-                "> A one-sentence description of the company and its audience.\n\n"
-                "## Key pages\n"
-                "- [Services](https://www.example.com/services)\n"
-                "- [Pricing](https://www.example.com/pricing)\n"
-                "- [Contact](https://www.example.com/contact)"
-            ),
+            recommendation="Consider publishing a short, accurate llms.txt file that links to your most useful public pages.",
+            copy_paste_fix=None,
         )
 
 

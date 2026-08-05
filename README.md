@@ -8,6 +8,58 @@ Phase 2 adds an unscored discoverability engine for robots.txt, sitemap.xml,
 canonical tags, meta-robots directives, and llms.txt. No scoring or Streamlit
 interface is included yet.
 
+## Development
+
+### Create virtual environment
+
+```powershell
+python -m venv .venv
+```
+
+Windows
+
+```powershell
+.venv\Scripts\activate
+```
+
+Linux/macOS
+
+```bash
+source .venv/bin/activate
+```
+
+### Install runtime dependencies
+
+```powershell
+pip install -r requirements.txt
+```
+
+### Install development dependencies
+
+```powershell
+pip install -r requirements-dev.txt
+```
+
+### Run tests
+
+```powershell
+python -m pytest -q
+```
+
+### Run CLI
+
+```powershell
+$env:PYTHONPATH="src"
+python -m citeready.cli https://example.com
+```
+
+### Show detailed findings
+
+```powershell
+$env:PYTHONPATH="src"
+python -m citeready.cli https://example.com --show-findings
+```
+
 ## Smoke test
 
 ```powershell

@@ -158,7 +158,7 @@ class SitemapAnalyzer:
                     why_it_matters=(
                         "An empty sitemap does not give search or answer engines additional URLs to discover."
                     ),
-                    recommended_fix="Add canonical, indexable page URLs to the sitemap and submit the updated file.",
+                    recommendation="Add canonical, indexable page URLs to the sitemap and submit the updated file.",
                     copy_paste_fix=None,
                 )
             )
@@ -237,13 +237,8 @@ class SitemapAnalyzer:
                 "Search and answer engines may be unable to read malformed sitemap XML and miss pages "
                 "that depend on it for discovery."
             ),
-            recommended_fix="Publish valid XML using a <urlset> or <sitemapindex> root element.",
-            copy_paste_fix=(
-                '<?xml version="1.0" encoding="UTF-8"?>\n'
-                '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-                "  <url><loc>https://www.example.com/</loc></url>\n"
-                "</urlset>"
-            ),
+            recommendation="Publish valid XML using a <urlset> or <sitemapindex> root element.",
+            copy_paste_fix=None,
         )
 
     @staticmethod
@@ -261,7 +256,7 @@ class SitemapAnalyzer:
                 "One or more sitemap files could not be parsed, so the reported URL count covers only "
                 "the successfully parsed files."
             ),
-            recommended_fix=(
+            recommendation=(
                 "Reduce individual sitemap file sizes, split large partitions, or increase the configured "
                 "limit only after reviewing the memory and network impact."
             ),
@@ -285,13 +280,8 @@ class SitemapAnalyzer:
                 "A sitemap helps crawlers discover important pages, especially pages that have limited "
                 "internal linking."
             ),
-            recommended_fix="Generate and publish a valid sitemap at /sitemap.xml or declare its location in robots.txt.",
-            copy_paste_fix=(
-                '<?xml version="1.0" encoding="UTF-8"?>\n'
-                '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-                f"  <url><loc>{urljoin(fallback_url, '/')}</loc></url>\n"
-                "</urlset>"
-            ),
+            recommendation="Generate and publish a valid sitemap at /sitemap.xml or declare its location in robots.txt.",
+            copy_paste_fix=None,
         )
 
 

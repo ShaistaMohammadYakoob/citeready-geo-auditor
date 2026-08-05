@@ -26,6 +26,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Smoke-test CiteReady's Phase 2 discoverability engine.")
     parser.add_argument("url", help="Public HTTP(S) URL to crawl, for example https://example.com")
     parser.add_argument("--max-pages", type=int, help="Override the configured limit (1-12).")
+    parser.add_argument(
+        "--show-findings",
+        action="store_true",
+        help="Print detailed, evidence-backed discoverability findings after the summary.",
+    )
     arguments = parser.parse_args()
 
     try:
@@ -40,6 +45,8 @@ def main() -> int:
         return 2
 
     _print_discoverability_report(result)
+    if arguments.show_findings:
+        _print_findings(result)
     if result.warnings:
         print("\nWarnings")
         for warning in result.warnings:
@@ -107,6 +114,31 @@ def _print_discoverability_report(result: CrawlResult) -> None:
     llms_txt = discoverability.llms_txt
     print("\nLLMS.txt")
     print(f"{CHECK_MARK} Found" if llms_txt.found else f"{CROSS_MARK} Missing")
+
+
+def _print_findings(result: CrawlResult) -> None:
+    """Print the shared finding contract in a business-readable CLI form."""
+
+    discoverability = result.discoverability
+    if discoverability is None:
+        return
+
+    print("\nDetailed findings")
+    if not discoverability.findings:
+        print("No actionable discoverability findings were detected.")
+        return
+
+    for finding in discoverability.findings:
+        print(f"\n[{finding.severity.value.upper()}] {finding.title}")
+        print(f"Page: {finding.affected_url}")
+        for index, evidence in enumerate(finding.evidence):
+            label = "Evidence" if index == 0 else "Additional evidence"
+            print(f"{label}: {evidence.exact_text}")
+        print(f"Why it matters: {finding.why_it_matters}")
+        print(f"Recommended action: {finding.recommendation}")
+        if finding.copy_paste_fix is not None:
+            print("Copy-paste fix:")
+            print(finding.copy_paste_fix)
 
 
 if __name__ == "__main__":

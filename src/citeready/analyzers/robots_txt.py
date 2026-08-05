@@ -127,7 +127,7 @@ class RobotsTxtAnalyzer:
                 "A robots.txt file is the standard place to publish crawler guidance and a sitemap "
                 "location. Without a retrievable file, bot-specific access cannot be verified."
             ),
-            recommended_fix="Publish a valid robots.txt file at the site root and include the sitemap URL.",
+            recommendation="Publish a valid robots.txt file at the site root and include the sitemap URL.",
             copy_paste_fix=(
                 "User-agent: *\nAllow: /\n\n"
                 f"Sitemap: {urljoin(robots_url, '/sitemap.xml')}"
@@ -149,11 +149,11 @@ class RobotsTxtAnalyzer:
                 f"{bot_name} is instructed not to crawl the site root, which can prevent it from "
                 "discovering eligible content."
             ),
-            recommended_fix=(
+            recommendation=(
                 f"Remove or narrow the site-wide Disallow directive for {bot_name} if this bot should "
                 "be able to discover your public pages."
             ),
-            copy_paste_fix=f"User-agent: {bot_name}\nAllow: /",
+            copy_paste_fix=None,
         )
 
 
