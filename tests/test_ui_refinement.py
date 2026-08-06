@@ -138,8 +138,14 @@ class UiRefinementTests(unittest.TestCase):
         self.assertIn("cr-mesh-shift", keyframes)
         self.assertIn("cr-progress-fill", keyframes)
         self.assertIn("cr-active-pulse", keyframes)
-        self.assertIn("stSegmentedControl", css)
+        self.assertIn("stButtonGroup", css)
         self.assertIn("cr-category-card-grid", css)
+
+    def test_hero_and_theme_selector_have_explicit_contrast_rules(self) -> None:
+        css = dashboard_css("light")
+        self.assertIn('button[data-variant="segmented_control"][data-selected]', css)
+        self.assertIn(".cr-hero .cr-hero-title", css)
+        self.assertIn("color: var(--cr-on-primary) !important", css)
 
     def test_safe_html_escapes_untrusted_finding_content(self) -> None:
         escaped = safe_html('<script>alert("x")</script>')

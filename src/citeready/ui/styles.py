@@ -63,20 +63,23 @@ def dashboard_css(mode: ThemeMode) -> str:
     div[data-testid="stHorizontalBlock"]:has(.cr-nav-brand) [data-testid="stLinkButton"] a:hover {{
       color: var(--cr-primary); background: var(--cr-primary-soft); border-color: transparent; box-shadow: none;
     }}
-    [data-testid="stSegmentedControl"] {{ min-width: 128px; }}
-    [data-testid="stSegmentedControl"] [role="radiogroup"] {{
+    [data-testid="stButtonGroup"] {{ min-width: 128px; }}
+    [data-testid="stButtonGroup"] [role="radiogroup"] {{
       display: flex; gap: 2px; padding: 3px; background: var(--cr-raised-surface);
       border: 1px solid var(--cr-border); border-radius: 9px;
     }}
-    [data-testid="stSegmentedControl"] label {{
-      min-height: 28px; padding: .26rem .42rem; color: var(--cr-muted) !important;
+    [data-testid="stButtonGroup"] button[data-variant="segmented_control"] {{
+      min-height: 28px; padding: .26rem .42rem; color: var(--cr-text) !important;
+      background: transparent !important; border-color: transparent !important;
       border-radius: 6px; font-size: .66rem; font-weight: 730; line-height: 1;
       transition: color 180ms ease, background 180ms ease, box-shadow 180ms ease;
     }}
-    [data-testid="stSegmentedControl"] label:has(input:checked) {{
+    [data-testid="stButtonGroup"] button[data-variant="segmented_control"][data-selected] {{
       color: var(--cr-on-primary) !important; background: linear-gradient(135deg, var(--cr-primary), var(--cr-cyan));
-      box-shadow: 0 2px 6px rgba(7, 26, 43, .18);
+      border-color: transparent !important; box-shadow: 0 2px 6px rgba(7, 26, 43, .18);
     }}
+    [data-testid="stButtonGroup"] button[data-variant="segmented_control"]:hover {{ background: var(--cr-primary-soft) !important; color: var(--cr-primary) !important; }}
+    [data-testid="stButtonGroup"] button[data-variant="segmented_control"][data-selected]:hover {{ color: var(--cr-on-primary) !important; background: linear-gradient(135deg, var(--cr-primary), var(--cr-cyan)) !important; }}
 
     /* Native controls share clear, theme-aware input and focus states. */
     [data-testid="stForm"] {{
@@ -122,10 +125,10 @@ def dashboard_css(mode: ThemeMode) -> str:
     .cr-hero::after {{ width: 270px; height: 270px; bottom: -170px; left: 34%; background: radial-gradient(circle, var(--cr-mint), transparent 67%); }}
     .cr-hero-copy {{ max-width: 690px; padding-top: .32rem; }}
     .cr-hero .cr-eyebrow {{ color: var(--cr-sky); animation: cr-fade-up 360ms 80ms ease-out both; }}
-    .cr-hero-title {{ max-width: 730px; margin: .42rem 0 .75rem; color: var(--cr-on-primary); font-size: clamp(2.3rem, 4.7vw, 4rem); font-weight: 760; line-height: 1.04; letter-spacing: -.065em; animation: cr-fade-up 480ms 150ms ease-out both; }}
+    .cr-hero .cr-hero-title {{ max-width: 730px; margin: .42rem 0 .75rem; color: var(--cr-on-primary) !important; font-size: clamp(2.3rem, 4.7vw, 4rem); font-weight: 760; line-height: 1.04; letter-spacing: -.065em; animation: cr-fade-up 480ms 150ms ease-out both; }}
     .cr-title-accent {{ color: var(--cr-mint); }}
     .cr-title-underline {{ background: linear-gradient(90deg, var(--cr-cyan), var(--cr-mint)); background-clip: text; color: transparent; border-bottom: 2px solid var(--cr-mint); }}
-    .cr-hero-copy p {{ max-width: 615px; margin: 0; color: var(--cr-text); font-size: .98rem; line-height: 1.62; animation: cr-fade-up 520ms 220ms ease-out both; }}
+    .cr-hero .cr-hero-copy p {{ max-width: 615px; margin: 0; color: var(--cr-on-primary) !important; opacity: .86; font-size: .98rem; line-height: 1.62; animation: cr-fade-up 520ms 220ms ease-out both; }}
     .cr-hero-chips {{ display: flex; flex-wrap: wrap; gap: .42rem; margin-top: 1.1rem; animation: cr-fade-up 600ms 290ms ease-out both; }}
     .cr-hero-chip {{ padding: .28rem .52rem; color: var(--cr-on-primary); background: rgba(7, 26, 43, .28); border: 1px solid rgba(239, 248, 255, .30); border-radius: 999px; font-size: .70rem; font-weight: 720; }}
     .cr-area-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; align-self: end; }}
@@ -138,7 +141,7 @@ def dashboard_css(mode: ThemeMode) -> str:
     .cr-area-icon {{ display: grid; width: 27px; height: 27px; place-items: center; color: var(--area-color); border: 1px solid color-mix(in srgb, var(--area-color) 70%, transparent); border-radius: 8px; }}
     .cr-area-icon svg {{ width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }}
     .cr-area-label {{ margin-top: .72rem; color: var(--cr-on-primary); font-size: .78rem; font-weight: 760; }}
-    .cr-area-description {{ margin-top: .22rem; color: var(--cr-text); font-size: .69rem; line-height: 1.42; }}
+    .cr-area-description {{ margin-top: .22rem; color: var(--cr-on-primary) !important; opacity: .76; font-size: .69rem; line-height: 1.42; }}
 
     /* Report framework, score, and category cards. */
     .cr-report-header {{ display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin: 1.55rem 0 .8rem; animation: cr-fade-up 360ms ease-out both; }}
@@ -221,10 +224,10 @@ def dashboard_css(mode: ThemeMode) -> str:
       .block-container {{ padding: .45rem .80rem 2.5rem; }}
       div[data-testid="stHorizontalBlock"]:has(.cr-nav-brand) {{ padding: .45rem .5rem; }}
       .cr-product-label, .cr-nav-link-label {{ display: none; }}
-      [data-testid="stSegmentedControl"] {{ min-width: 74px; }}
-      [data-testid="stSegmentedControl"] label {{ padding: .26rem .34rem; font-size: 0; }}
-      [data-testid="stSegmentedControl"] label:has(input[value="light"])::after {{ content: "☀"; font-size: .73rem; }}
-      [data-testid="stSegmentedControl"] label:has(input[value="dark"])::after {{ content: "🌙"; font-size: .73rem; }}
+      [data-testid="stButtonGroup"] {{ min-width: 74px; }}
+      [data-testid="stButtonGroup"] button[data-variant="segmented_control"] {{ padding: .26rem .34rem; font-size: 0; }}
+      [data-testid="stButtonGroup"] button[data-variant="segmented_control"]:first-child::after {{ content: "☀"; font-size: .73rem; }}
+      [data-testid="stButtonGroup"] button[data-variant="segmented_control"]:last-child::after {{ content: "🌙"; font-size: .73rem; }}
       .cr-hero {{ padding: 1.35rem; border-radius: 14px; }}
       .cr-hero-title {{ font-size: 2.25rem; }}
       .cr-area-grid, .cr-category-card-grid {{ grid-template-columns: 1fr; }}
